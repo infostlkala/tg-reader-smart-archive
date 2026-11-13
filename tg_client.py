@@ -177,28 +177,35 @@ def fetch_messages(api_id: int, api_hash: str, session_string: str,
                     "media_path": None,
                     "media_mime": getattr(m.document, "mime_type", None) if m.document else None,
                 }
-                # دانلود واقعی رسانه‌ها روی دیسک دائمی؛ خطای یک فایل نباید کل دریافت را متوقف کند.
+                # دانلود رسانه‌ها؛ خطای یک فایل نباید کل دریافت را متوقف کند.
+                # MAX_MEDIA_MB سقف حجم است (پیش‌فرض 40) — فایل بزرگ‌تر دانلود نمی‌شود
+                # تا رم/دیسک سرور محافظت شود و فقط متادیتای آن ذخیره می‌شود.
                 if media_root and m.media:
-                    try:
-                        safe_channel = re.sub(r"[^A-Za-z0-9_.-]", "_", str(channel))
-                        folder = os.path.join(media_root, safe_channel)
-                        os.makedirs(folder, exist_ok=True)
-                        original = getattr(getattr(m, "file", None), "name", None)
-                        if not original:
-                            ext = ".jpg" if media == "photo" else ".mp4" if media == "video" else ".bin"
-                            original = f"{m.id}{ext}"
-                        original = os.path.basename(original).replace("\\", "_")
-                        # ID پیام در نام ذخیره‌سازی، جلوی تداخل نام فایل‌های هم‌نام را می‌گیرد.
-                        stem, ext = os.path.splitext(original)
-                        local_name = f"{m.id}_{stem[:100]}{ext[:16]}"
-                        target = os.path.join(folder, local_name)
-                        if not os.path.exists(target):
-                            saved_path = await client.download_media(m, file=target)
-                            if saved_path and os.path.isfile(saved_path):
-                                item["media_name"] = original
-                                item["media_path"] = os.path.relpath(saved_path, media_root).replace(os.sep, "/")
-                    except Exception as media_error:
-                        item["media_error"] = str(media_error)[:300]
+                    max_mb = float(os.environ.get("MAX_MEDIA_MB") or 40)
+                    file_size = getattr(getattr(m, "file", None), "size", None)
+                    if file_size and file_size > max_mb * 1024 * 1024:
+                        item["media_skipped"] = f"بزرگ‌تر از سقف {max_mb:g}MB"
+                    else:
+                        try:
+                            safe_channel = re.sub(r"[^A-Za-z0-9_.-]", "_", str(channel))
+                            folder = os.path.join(media_root, safe_channel)
+                            os.makedirs(folder, exist_ok=True)
+                            original = getattr(getattr(m, "file", None), "name", None)
+                            if not original:
+                                ext = ".jpg" if media == "photo" else ".mp4" if media == "video" else ".bin"
+                                original = f"{m.id}{ext}"
+                            original = os.path.basename(original).replace("\\", "_")
+                            # ID پیام در نام ذخیره‌سازی، جلوی تداخل نام فایل‌های هم‌نام را می‌گیرد.
+                            stem, ext = os.path.splitext(original)
+                            local_name = f"{m.id}_{stem[:100]}{ext[:16]}"
+                            target = os.path.join(folder, local_name)
+                            if not os.path.exists(target):
+                                saved_path = await client.download_media(m, file=target)
+                                if saved_path and os.path.isfile(saved_path):
+                                    item["media_name"] = original
+                                    item["media_path"] = os.path.relpath(saved_path, media_root).replace(os.sep, "/")
+                        except Exception as media_error:
+                            item["media_error"] = str(media_error)[:300]
                 out.append(item)
             return {"ok": True, "messages": out,
                     "title": getattr(entity, "title", channel)}

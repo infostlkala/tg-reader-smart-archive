@@ -18,6 +18,7 @@ from flask import (Flask, render_template, request, session,
 from store import Store
 import scraper
 import tg_client
+import publisher
 
 # ---------- متغیرهای محیطی (در پنل Railway/لیارا تنظیم می‌شوند) ----------
 # روی Railway یک Volume بچسبانید (مثلاً /data) و DATA_DIR را همان قرار دهید؛
@@ -139,10 +140,20 @@ def guess_category(filename: str, text_body: str, media_type: str) -> str:
 
 
 # ---------- منطق دریافت پیام‌ها ----------
+# رسانه‌ها قبل از انتشار در تمپ دانلود می‌شوند تا دیسک دائمی Railway (۵۰۰MB) پر نشود.
+MEDIA_TMP_ROOT = os.environ.get("MEDIA_TMP_ROOT", "/tmp/tg-media")
+
+
 def do_fetch(channel: str) -> dict:
-    """یک بار دریافت پیام‌های جدید یک کانال و ذخیره (افزایشی، بر اساس min_id)."""
+    """یک بار دریافت پیام‌های جدید یک کانال و ذخیره (افزایشی، بر اساس min_id).
+    اگر انتشار (endpoint/FTP) تنظیم شده باشد، هر پیام به cPanel منتشر می‌شود و
+    فایل رسانه از تمپ حذف می‌شود؛ در غیر این صورت مثل قبل محلی نگه داشته می‌شود."""
     s = store.get_settings()
     engine = s.get("engine", "telethon")
+    pub_cfg = publisher.publish_config()
+    do_publish = publisher.publish_enabled(pub_cfg)
+    # وقتی انتشار فعال است، رسانه به تمپ می‌رود؛ وقتی نه، به دیسک دائمی
+    media_root = MEDIA_TMP_ROOT if do_publish else os.path.join(DATA_DIR, "media")
     try:
         if engine == "telethon":
             api_id = int(API_ID_ENV or s.get("api_id", "") or 0)
@@ -156,20 +167,42 @@ def do_fetch(channel: str) -> dict:
                 api_id, api_hash, sess, channel,
                 limit=s.get("history_limit", 100),
                 min_id=store.latest_id(channel) or 0,
-                media_root=os.path.join(DATA_DIR, "media"))
+                media_root=media_root)
             if not res.get("ok"):
                 return {"ok": False, "new": 0, "error": res.get("error", "خطای ناشناخته")}
             msgs = [enrich_message(m, channel) for m in res["messages"]]
             store.upsert_messages(channel, msgs)
+            published, ftp_errors = 0, 0
+            if do_publish:
+                for m in msgs:
+                    try:
+                        pr = publisher.publish_message(m, pub_cfg, media_root=media_root)
+                        if pr.get("ok"):
+                            published += 1
+                        if str(pr.get("ftp", "")).startswith("error"):
+                            ftp_errors += 1
+                        store.upsert_messages(channel, [m])  # مسیر/URL نهایی رسانه ذخیره شود
+                    except Exception as pe:
+                        print(f"[publish] @{channel}#{m.get('id')}: {pe}", flush=True)
             return {"ok": True, "new": len(msgs), "title": res.get("title", ""),
-                    "downloaded": sum(1 for m in msgs if m.get("media_path"))}
+                    "downloaded": sum(1 for m in msgs if m.get("media_path")),
+                    "published": published, "ftp_errors": ftp_errors}
         else:  # web
             msgs = scraper.fetch_new(channel,
                                      max_pages=s.get("web_max_pages", 5),
                                      min_id=store.latest_id(channel) or 0)
             msgs = [enrich_message(m, channel) for m in msgs]
             store.upsert_messages(channel, msgs)
-            return {"ok": True, "new": len(msgs), "downloaded": 0}
+            published = 0
+            if do_publish:
+                for m in msgs:
+                    try:
+                        if publisher.publish_message(m, pub_cfg, media_root=media_root).get("ok"):
+                            published += 1
+                        store.upsert_messages(channel, [m])
+                    except Exception as pe:
+                        print(f"[publish] @{channel}#{m.get('id')}: {pe}", flush=True)
+            return {"ok": True, "new": len(msgs), "downloaded": 0, "published": published}
     except Exception as e:
         return {"ok": False, "new": 0, "error": str(e)}
 

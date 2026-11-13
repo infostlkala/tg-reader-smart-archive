@@ -5,7 +5,7 @@
 
 {% if result %}
   {% if result.ok %}
-    <div class="flash">✅ دریافت انجام شد — عنوان: «{{ result.title or '-' }}» ، پیام‌های جدید: {{ result.new }}{% if result.downloaded is defined %} ، فایل‌های دانلودشده: {{ result.downloaded }}{% endif %}</div>
+    <div class="flash">✅ دریافت انجام شد — عنوان: «{{ result.title or '-' }}» ، پیام‌های جدید: {{ result.new }}{% if result.downloaded is defined %} ، فایل‌های دانلودشده: {{ result.downloaded }}{% endif %}{% if result.published is defined %} ، منتشرشده به هاست: {{ result.published }}{% if result.ftp_errors %} ، خطای FTP: {{ result.ftp_errors }}{% endif %}{% endif %}</div>
   {% else %}
     <div class="flash err">❌ {{ result.error }}</div>
   {% endif %}
@@ -173,15 +173,20 @@ async function runNetDiag() {
 </script>
 
 <div class="card">
-  <h2>۵) تنظیم هوش مصنوعی و آرشیو</h2>
-  <p>برای تولید خودکار عنوان فارسی، توضیحات، دسته‌بندی و برچسب‌ها، در متغیرهای محیطی برنامه این سه مقدار را تنظیم کنید:</p>
-  <ul>
-    <li><code>AI_API_BASE_URL</code>: آدرس پایه API سازگار با OpenAI، بدون <code>/chat/completions</code></li>
-    <li><code>AI_API_KEY</code>: کلید API</li>
-    <li><code>AI_MODEL</code>: نام مدل</li>
-  </ul>
-  <p>اطلاعات پیام‌ها در SQLite با نام <code>archive.sqlite3</code> و فایل‌ها در <code>media/</code> زیر مسیر <code>DATA_DIR</code> ذخیره می‌شوند. برای ماندگاری پس از راه‌اندازی مجدد، دیسک دائمی هاست را فعال کنید. دانلود فایل‌ها از موتور Telethon انجام می‌شود.</p>
-  <p class="muted">اگر API هوش مصنوعی تنظیم نباشد یا خطا بدهد، سیستم با عنوان و دسته‌بندی اولیه ادامه می‌دهد و دریافت تلگرام متوقف نمی‌شود.</p>
+  <h2>۵) انتشار به هاست شما (cPanel) و هوش مصنوعی</h2>
+  <p>این مقادیر در <b>متغیرهای محیطی Railway</b> تنظیم می‌شوند (Service → Variables) و با هر تغییر، دیپلوی جدید می‌سازند:</p>
+  <table>
+    <tr><th>متغیر</th><th>کاربرد</th></tr>
+    <tr><td><code>PUBLISH_ENDPOINT_URL</code></td><td>آدرس فایل <code>receiver.php</code> آپلودشده روی cPanel شما</td></tr>
+    <tr><td><code>PUBLISH_SECRET</code></td><td>رمز مشترک — باید در receiver.php هم همان باشد</td></tr>
+    <tr><td><code>FTP_HOST</code> / <code>FTP_USER</code> / <code>FTP_PASS</code></td><td>اطلاعات FTP هاست (از cPanel → FTP Accounts)</td></tr>
+    <tr><td><code>FTP_SECURE</code></td><td><code>1</code> اگر هاست FTPS دارد (پورت 21 با TLS)</td></tr>
+    <tr><td><code>FTP_REMOTE_DIR</code></td><td>پوشه مقصد رسانه‌ها، مثل <code>public_html/wp-content/uploads/tg</code></td></tr>
+    <tr><td><code>MEDIA_PUBLIC_BASE_URL</code></td><td>آدرس عمومی همان پوشه، مثل <code>https://example.com/wp-content/uploads/tg</code></td></tr>
+    <tr><td><code>MAX_MEDIA_MB</code></td><td>سقف حجم هر فایل رسانه (پیش‌فرض 40)</td></tr>
+    <tr><td><code>AI_API_BASE_URL</code> / <code>AI_API_KEY</code> / <code>AI_MODEL</code></td><td>هوش مصنوعی عنوان/دسته/تگ فارسی (سازگار با OpenAI)</td></tr>
+  </table>
+  <p class="muted">اگر endpoint و رمز ست شده باشند، هر پیام پس از دریافت: رسانه به تمپ دانلود می‌شود → FTP به هاست شما → متادیتا به receiver.php → حذف تمپ؛ پس دیسک Railway پر نمی‌شود. در غیر این صورت رفتار قبلی (ذخیره محلی) باقی می‌ماند. فایل <code>receiver.php</code> در ریشه پروژه است؛ روی cPanel آپلودش کنید و مقادیر دیتابیس داخلش را ویرایش کنید.</p>
 </div>
 
 <div class="card">
