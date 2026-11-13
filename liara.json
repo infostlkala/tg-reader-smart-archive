@@ -1,0 +1,12 @@
+{
+  "platform": "flask",
+  "flask": {
+    "pythonVersion": "3.11"
+  },
+  "disks": [
+    {
+      "name": "data",
+      "mountTo": "/app/data"
+    }
+  ]
+}

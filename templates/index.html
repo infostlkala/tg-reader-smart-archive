@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="tabs">
+  {% for ch in channels %}
+    <a href="{{ url_for('index', ch=ch) }}" class="{{ 'active' if ch == active else '' }}">📢 @{{ ch }}
+      <span class="badge">{{ counts.get(ch, 0) }}</span></a>
+  {% endfor %}
+</div>
+{% if not channels %}
+  <div class="card">هنوز کانالی تنظیم نشده است. از <a href="{{ url_for('admin_login') }}">پنل مدیریت</a> کانال اضافه کنید.</div>
+{% elif not messages %}
+  <div class="card">
+    برای @{{ active }} هنوز پیامی ذخیره نشده است.
+    از پنل مدیریت دکمهٔ «دریافت پیام‌ها» را بزنید یا چند لحظه صبر کنید تا دریافت خودکار انجام شود.
+  </div>
+{% else %}
+  <div class="card">
+    {% for m in messages %}
+      <div class="msg">
+        <div class="meta">
+          {% if m.date %}🕒 {{ m.date[:16].replace('T',' ') }}{% endif %}
+          {% if m.views %} 👁 {{ m.views }}{% endif %}
+          {% if m.has_media %} 🖼 {{ m.has_media }}{% endif %}
+          {% if m.link %} · <a href="{{ m.link }}" target="_blank">مشاهده در تلگرام ↗</a>{% endif %}
+        </div>
+        <h3 style="margin:6px 0 8px;font-size:16px">{{ m.title or m.text or 'بدون عنوان' }}</h3>
+        {% if m.media_path %}
+          {% set media_url = url_for('media_file', filename=m.media_path) %}
+          {% if m.has_media == 'photo' or m.media_mime and m.media_mime.startswith('image/') %}
+            <a href="{{ media_url }}" target="_blank"><img src="{{ media_url }}" alt="{{ m.title or m.media_name or 'تصویر' }}" loading="lazy" style="display:block;max-width:100%;max-height:420px;border-radius:10px;margin:8px 0"></a>
+          {% endif %}
+          <div class="filebox">
+            <span>📎 {{ m.media_name or m.media_path.split('/')[-1] }}</span>
+            <a class="btn green" href="{{ media_url }}?download=1">⬇ دانلود فایل</a>
+          </div>
+        {% elif m.has_media %}
+          <div class="muted">رسانه شناسایی شد؛ هنوز فایل محلی ذخیره نشده است.</div>
+        {% endif %}
+        {% if m.description or m.text %}
+          <div style="white-space:pre-wrap;overflow-wrap:anywhere">{{ m.description or m.text }}</div>
+        {% endif %}
+        {% if m.category %}<div class="tags"><span class="badge">{{ m.category }}</span>{% for tag in m.tags or [] %}<span class="badge">{{ tag }}</span>{% endfor %}</div>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+  <div class="muted">نمایش آخرین {{ messages|length }} پیام از مجموع {{ counts.get(active, 0) }} پیام ذخیره‌شده.</div>
+{% endif %}
+{% endblock %}

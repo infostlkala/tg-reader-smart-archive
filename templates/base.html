@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}خواننده کانال تلگرام{% endblock %}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Vazirmatn, Tahoma, sans-serif; background:#f4f6f8; color:#1f2937; margin:0; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 16px; }
+  header { background:#1e293b; color:#fff; padding:14px 18px; border-radius:12px; margin-bottom:16px;
+           display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;}
+  header a { color:#93c5fd; text-decoration:none; font-size:14px; }
+  h1 { font-size:20px; margin:0; } h2 { font-size:17px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .tabs a { background:#fff; border:1px solid #d1d5db; border-radius:8px; padding:6px 14px;
+            text-decoration:none; color:#374151; font-size:14px; }
+  .tabs a.active { background:#2563eb; color:#fff; border-color:#2563eb; }
+  .card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin-bottom:14px; }
+  .msg { border-bottom:1px solid #f1f5f9; padding:10px 4px; }
+  .msg:last-child { border-bottom:none; }
+  .msg .meta { font-size:12px; color:#6b7280; margin-bottom:4px; }
+  .msg a { color:#2563eb; text-decoration:none; }
+  .badge { background:#dbeafe; color:#1e40af; border-radius:6px; padding:1px 8px; font-size:11px; margin-inline-start:6px; }
+  form label { display:block; font-size:13px; margin:10px 0 4px; font-weight:600; }
+  form input[type=text], form input[type=number], form input[type=password], form select, form textarea {
+      width:100%; padding:8px 10px; border:1px solid #d1d5db; border-radius:8px; font-size:14px;
+      font-family:inherit; background:#fff; }
+  form textarea { min-height:80px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; } .row > div { flex:1; min-width:140px; }
+  .btn { display:inline-block; background:#2563eb; color:#fff; border:none; border-radius:8px;
+         padding:9px 18px; font-size:14px; cursor:pointer; font-family:inherit; margin-top:10px; text-decoration:none;}
+  .btn.gray { background:#64748b; }
+  .btn.green { background:#16a34a; }
+  .flash { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:14px;}
+  .flash.err { background:#fef2f2; border-color:#fca5a5; color:#991b1b; }
+  .muted { color:#6b7280; font-size:12px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th,td { text-align:right; padding:8px 10px; border-bottom:1px solid #f1f5f9; }
+  .ok { color:#16a34a; } .no { color:#dc2626; }
+  .filebox { display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin:8px 0;overflow-wrap:anywhere }
+  .tags { display:flex;gap:5px;flex-wrap:wrap;margin-top:8px }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>📡 خواننده کانال تلگرام</h1>
+    <div>
+      {% if session.get('admin') %}
+        <a href="{{ url_for('admin') }}">⚙️ پنل مدیریت</a> |
+        <a href="{{ url_for('admin_logout') }}">خروج</a>
+      {% else %}
+        <a href="{{ url_for('admin_login') }}">ورود مدیر</a>
+      {% endif %}
+    </div>
+  </header>
+  {% with msgs = get_flashed_messages() %}
+    {% for m in msgs %}<div class="flash">{{ m }}</div>{% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}ورود مدیر{% endblock %}
+{% block content %}
+<div class="card" style="max-width:380px;margin:60px auto;">
+  <h2>🔐 ورود مدیر</h2>
+  <form method="post">
+    <label for="password">رمز مدیریت (ADMIN_PASSWORD)</label>
+    <input type="password" id="password" name="password" required>
+    <button class="btn" type="submit">ورود</button>
+  </form>
+</div>
+{% endblock %}

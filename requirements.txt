@@ -1,0 +1,8 @@
+Flask==3.0.3
+requests==2.32.3
+beautifulsoup4==4.12.3
+Telethon==1.36.0
+# فقط برای حالت رله «پروکسی» در پنل مدیریت لازم است؛ در حالت اتصال مستقیم بلااستفاده‌اند
+python-socks[asyncio]==2.4.0
+PySocks==1.7.1
+gunicorn==22.0.0

@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}پنل مدیریت{% endblock %}
+{% block content %}
+<h2>⚙️ پنل مدیریت</h2>
+
+{% if result %}
+  {% if result.ok %}
+    <div class="flash">✅ دریافت انجام شد — عنوان: «{{ result.title or '-' }}» ، پیام‌های جدید: {{ result.new }}{% if result.downloaded is defined %} ، فایل‌های دانلودشده: {{ result.downloaded }}{% endif %}</div>
+  {% else %}
+    <div class="flash err">❌ {{ result.error }}</div>
+  {% endif %}
+{% endif %}
+
+<div class="card">
+  <h2>۱) تنظیمات اصلی</h2>
+  <form method="post" action="{{ url_for('admin_save') }}">
+    <div class="row">
+      <div>
+        <label for="engine">موتور دریافت</label>
+        <select id="engine" name="engine">
+          <option value="telethon" {{ 'selected' if settings.engine == 'telethon' }}>روش اول — Telethon (تاریخچه کامل)</option>
+          <option value="web" {{ 'selected' if settings.engine == 'web' }}>وب t.me/s (بدون نیاز به API)</option>
+        </select>
+      </div>
+      <div>
+        <label for="refresh_interval">فاصله دریافت خودکار (ثانیه)</label>
+        <input type="number" id="refresh_interval" name="refresh_interval" min="15" value="{{ settings.refresh_interval }}">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="history_limit">سقف تاریخچه (۰ = کل تاریخچه)</label>
+        <input type="number" id="history_limit" name="history_limit" min="0" value="{{ settings.history_limit }}">
+      </div>
+      <div>
+        <label for="web_max_pages">حداکثر صفحه وب (موتور web)</label>
+        <input type="number" id="web_max_pages" name="web_max_pages" min="1" value="{{ settings.web_max_pages }}">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="max_stored">سقف ذخیره هر کانال</label>
+        <input type="number" id="max_stored" name="max_stored" min="10" value="{{ settings.max_stored }}">
+      </div>
+      <div>
+        <label for="display_limit">تعداد نمایش در صفحه عمومی</label>
+        <input type="number" id="display_limit" name="display_limit" min="1" value="{{ settings.display_limit }}">
+      </div>
+    </div>
+    <label for="channels">کانال‌ها (هر خط یک نام، بدون @)</label>
+    <textarea id="channels" name="channels">{{ settings.channels | join('\n') }}</textarea>
+    <label>
+      <input type="checkbox" name="live_listen" {{ 'checked' if settings.live_listen }} style="margin-left:6px">
+      دریافت خودکار دوره‌ای فعال باشد
+    </label>
+    <br><button class="btn" type="submit">💾 ذخیره تنظیمات</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>۲) وضعیت و دریافت دستی</h2>
+  <table>
+    <tr><th>کانال</th><th>تعداد پیام ذخیره‌شده</th><th>دریافت دستی</th></tr>
+    {% for ch, c in counts.items() %}
+      <tr>
+        <td>@{{ ch }}</td><td>{{ c }}</td>
+        <td>
+          <form method="post" action="{{ url_for('admin_fetch') }}" style="margin:0">
+            <input type="hidden" name="channel" value="{{ ch }}">
+            <button class="btn green" type="submit" style="padding:5px 14px;margin-top:0">🔄 دریافت پیام‌ها</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="3" class="muted">کانالی ثبت نشده — اول تنظیمات بالا را ذخیره کنید.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h2>۳) مسیر اتصال به تلگرام (رله اختیاری)</h2>
+  <div class="muted" style="margin-bottom:8px">
+    پیش‌فرض: اتصال مستقیم. اگر سرور به تلگرام دسترسی نداشته باشد (خطای No route to host / Network is unreachable
+    در تست پایین)، یکی از دو گزینه را فعال کنید. حالت «آدرس پایه سفارشی» فقط موتور web را رد می‌کند؛
+    برای موتور Telethon باید حالت «پروکسی» را تنظیم کنید.
+  </div>
+  <form method="post" action="{{ url_for('admin_relay') }}">
+    <label for="relay_mode">حالت اتصال</label>
+    <select id="relay_mode" name="relay_mode">
+      <option value="none" {{ 'selected' if relay.mode == 'none' }}>اتصال مستقیم (بدون رله)</option>
+      <option value="proxy" {{ 'selected' if relay.mode == 'proxy' }}>پروکسی SOCKS5 / HTTP (هر دو موتور)</option>
+      <option value="base_url" {{ 'selected' if relay.mode == 'base_url' }}>آدرس پایه سفارشی (فقط موتور web)</option>
+    </select>
+    <label for="relay_proxy">آدرس پروکسی (در حالت پروکسی)</label>
+    <input type="text" id="relay_proxy" name="relay_proxy" value="{{ relay.proxy }}" placeholder="socks5://user:pass@1.2.3.4:1080">
+    <label for="relay_base_url">آدرس پایه سفارشی (در حالت آدرس پایه — مثل Worker کلادفلر)</label>
+    <input type="text" id="relay_base_url" name="relay_base_url" value="{{ relay.base_url }}" placeholder="https://my-worker.example.workers.dev">
+    <label>
+      <input type="checkbox" name="force_ipv4" {{ 'checked' if settings.force_ipv4 }} style="margin-left:6px">
+      اجبار اتصال روی IPv4 (اگر تست IPv6 خراب بود و IPv4 سالم بود، فعال کنید)
+    </label>
+    <br><button class="btn" type="submit">💾 ذخیره و اعمال مسیر اتصال</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>۴) تست اتصال به تلگرام</h2>
+  <div class="muted" style="margin-bottom:8px">
+    این تست از داخل سرور اجرا می‌شود (نه از مرورگر شما) و از همان مسیری استفاده می‌کند که دریافت پیام‌ها استفاده می‌کند؛
+    اگر سبز شد یعنی سرور از طریق مسیر فعلی به تلگرام دسترسی دارد.
+  </div>
+  <button class="btn" id="tg-test-btn" onclick="runTgTest()">🔍 تست اتصال به تلگرام</button>
+  <button class="btn gray" id="net-diag-btn" onclick="runNetDiag()" style="margin-inline-start:8px">🩺 عیب‌یابی کامل شبکه</button>
+  <div id="tg-test-result" style="margin-top:10px"></div>
+</div>
+
+<script>
+async function runTgTest() {
+  const btn = document.getElementById('tg-test-btn');
+  const box = document.getElementById('tg-test-result');
+  btn.disabled = true;
+  btn.textContent = '⏳ در حال تست...';
+  box.innerHTML = '';
+  try {
+    const r = await fetch('{{ url_for("tg_test") }}', {cache: 'no-store'});
+    const d = await r.json();
+    let html = d.ok
+      ? '<div class="flash">✅ سرور به تلگرام دسترسی دارد — اتصال برقرار است.</div>'
+      : '<div class="flash err">❌ سرور به تلگرام دسترسی ندارد — اتصال برقرار نشد.</div>';
+    html += '<table>';
+    for (const c of d.checks) {
+      html += '<tr><td>' + c.name + '</td><td class="' + (c.ok ? 'ok' : 'no') + '">' +
+              (c.ok ? '✔ ' : '✖ ') + c.detail + '</td></tr>';
+    }
+    html += '</table><div class="muted">زمان تست: ' + d.time + '</div>';
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = '<div class="flash err">❌ خطا در اجرای تست: ' + e + '</div>';
+  }
+  btn.disabled = false;
+  btn.textContent = '🔍 تست اتصال به تلگرام';
+}
+
+async function runNetDiag() {
+  const btn = document.getElementById('net-diag-btn');
+  const box = document.getElementById('tg-test-result');
+  btn.disabled = true;
+  btn.textContent = '⏳ در حال عیب‌یابی...';
+  box.innerHTML = '';
+  try {
+    const r = await fetch('{{ url_for("admin_diagnose") }}', {cache: 'no-store'});
+    const d = await r.json();
+    let html = d.ok
+      ? '<div class="flash">✅ همه بررسی‌های شبکه موفق بود.</div>'
+      : '<div class="flash err">❌ یکی یا چند بررسی شبکه ناموفق بود — جزئیات پایین.</div>';
+    html += '<table>';
+    for (const c of d.checks) {
+      if (!c.detail && c.ok && c.name.startsWith('🔎')) {
+        html += '<tr><td colspan="2"><b>' + c.name + '</b></td></tr>';
+      } else {
+        html += '<tr><td>' + c.name + '</td><td class="' + (c.ok ? 'ok' : 'no') + '">' +
+                (c.ok ? '✔ ' : '✖ ') + c.detail + '</td></tr>';
+      }
+    }
+    html += '</table><div class="muted">زمان عیب‌یابی: ' + d.time + '</div>';
+    box.innerHTML = html;
+  } catch (e) {
+    box.innerHTML = '<div class="flash err">❌ خطا در اجرای عیب‌یابی: ' + e + '</div>';
+  }
+  btn.disabled = false;
+  btn.textContent = '🩺 عیب‌یابی کامل شبکه';
+}
+</script>
+
+<div class="card">
+  <h2>۵) تنظیم هوش مصنوعی و آرشیو</h2>
+  <p>برای تولید خودکار عنوان فارسی، توضیحات، دسته‌بندی و برچسب‌ها، در متغیرهای محیطی برنامه این سه مقدار را تنظیم کنید:</p>
+  <ul>
+    <li><code>AI_API_BASE_URL</code>: آدرس پایه API سازگار با OpenAI، بدون <code>/chat/completions</code></li>
+    <li><code>AI_API_KEY</code>: کلید API</li>
+    <li><code>AI_MODEL</code>: نام مدل</li>
+  </ul>
+  <p>اطلاعات پیام‌ها در SQLite با نام <code>archive.sqlite3</code> و فایل‌ها در <code>media/</code> زیر مسیر <code>DATA_DIR</code> ذخیره می‌شوند. برای ماندگاری پس از راه‌اندازی مجدد، دیسک دائمی هاست را فعال کنید. دانلود فایل‌ها از موتور Telethon انجام می‌شود.</p>
+  <p class="muted">اگر API هوش مصنوعی تنظیم نباشد یا خطا بدهد، سیستم با عنوان و دسته‌بندی اولیه ادامه می‌دهد و دریافت تلگرام متوقف نمی‌شود.</p>
+</div>
+
+<div class="card">
+  <h2>۶) ورود تلگرام (روش اول — Telethon)</h2>
+  {% if has_session %}
+    <div class="flash">✅ سشن تلگرام تنظیم شده است؛ موتور telethon آماده کار است.</div>
+  {% else %}
+    <div class="muted" style="margin-bottom:8px">
+      گام ۱: api_id و api_hash را از <a href="https://my.telegram.org" target="_blank">my.telegram.org</a> بگیرید.
+      گام ۲: شماره را وارد و کد درخواست کنید. گام ۳: کد ۵ رقمی (و در صورت داشتن 2FA، رمز دوم) را وارد کنید.
+      سشن ساخته‌شده به‌صورت دائمی ذخیره می‌شود و بعد از این فقط یک بار لازم است.
+    </div>
+  {% endif %}
+  <form method="post" action="{{ url_for('tg_send_code') }}">
+    <div class="row">
+      <div>
+        <label for="api_id">api_id (عدد)</label>
+        <input type="text" id="api_id" name="api_id" value="{{ api_id_env }}" placeholder="مثلاً 123456">
+      </div>
+      <div>
+        <label for="api_hash">api_hash</label>
+        <input type="text" id="api_hash" name="api_hash" value="{{ api_hash_env }}" placeholder="a1b2c3...">
+      </div>
+      <div>
+        <label for="phone">شماره تلفن (با کد کشور)</label>
+        <input type="text" id="phone" name="phone" placeholder="+98912...">
+      </div>
+    </div>
+    <button class="btn gray" type="submit">📨 ارسال کد ورود</button>
+  </form>
+  <form method="post" action="{{ url_for('tg_signin') }}" style="margin-top:14px">
+    <div class="row">
+      <div>
+        <label for="code">کد ۵ رقمی تلگرام</label>
+        <input type="text" id="code" name="code" placeholder="12345">
+      </div>
+      <div>
+        <label for="password">رمز دوم 2FA (در صورت وجود)</label>
+        <input type="password" id="password" name="password">
+      </div>
+    </div>
+    <button class="btn" type="submit">✅ تکمیل ورود و ذخیره سشن</button>
+  </form>
+</div>
+{% endblock %}

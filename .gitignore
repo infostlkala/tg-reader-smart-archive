@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Local runtime data (never commit)
+data/
+*.sqlite3
+*.sqlite3-journal
+messages/
+media/
+settings.json
+worker.lock
+*.session
+
+# Environment / secrets
+.env
+.env.local
+
+# IDE / OS
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
