@@ -150,65 +150,28 @@ def sign_in(api_id: int, api_hash: str, session_string: str,
 
 
 def fetch_messages(api_id: int, api_hash: str, session_string: str,
-                   channel: str, limit: int, min_id: int, media_root: str = "") -> dict:
-    """دریافت پیام‌های کانال (جدید به قدیم) بزرگ‌تر از min_id."""
+                   channel: str, limit: int, min_id: int, media_root: str = "",
+                   only_ids: list | None = None) -> dict:
+    """دریافت پیام‌های کانال (جدید به قدیم) بزرگ‌تر از min_id.
+    only_ids: اگر داده شود فقط همین شناسه‌ها واکشی می‌شود (بازیابی رسانه گم‌شده)."""
     async def job(loop):
         client = _make(session_string, api_id, api_hash, loop)
         try:
             await client.connect()
             entity = await client.get_entity(channel)
             out = []
-            kwargs = {"limit": int(limit) if int(limit) > 0 else None}
-            if min_id:
-                kwargs["min_id"] = int(min_id)
-            async for m in client.iter_messages(entity, **kwargs):
-                media = ("photo" if m.photo else "video" if m.video
-                         else "audio" if (m.voice or m.audio)
-                         else "document" if m.document else None)
-                item = {
-                    "id": m.id,
-                    "date": m.date.isoformat() if m.date else None,
-                    "text": m.raw_text or "",
-                    "views": m.views,
-                    "forwards": m.forwards,
-                    "has_media": media,
-                    # آلبوم‌های تلگرام (چند عکس در یک پست) شناسه گروه مشترک دارند
-                    "media_group": str(m.grouped_id) if getattr(m, "grouped_id", None) else None,
-                    "link": f"https://t.me/{channel}/{m.id}",
-                    "media_name": None,
-                    "media_path": None,
-                    "media_mime": getattr(m.document, "mime_type", None) if m.document else None,
-                }
-                # دانلود رسانه‌ها؛ خطای یک فایل نباید کل دریافت را متوقف کند.
-                # MAX_MEDIA_MB سقف حجم است (پیش‌فرض 40) — فایل بزرگ‌تر دانلود نمی‌شود
-                # تا رم/دیسک سرور محافظت شود و فقط متادیتای آن ذخیره می‌شود.
-                if media_root and m.media:
-                    max_mb = float(os.environ.get("MAX_MEDIA_MB") or 40)
-                    file_size = getattr(getattr(m, "file", None), "size", None)
-                    if file_size and file_size > max_mb * 1024 * 1024:
-                        item["media_skipped"] = f"بزرگ‌تر از سقف {max_mb:g}MB"
-                    else:
-                        try:
-                            safe_channel = re.sub(r"[^A-Za-z0-9_.-]", "_", str(channel))
-                            folder = os.path.join(media_root, safe_channel)
-                            os.makedirs(folder, exist_ok=True)
-                            original = getattr(getattr(m, "file", None), "name", None)
-                            if not original:
-                                ext = ".jpg" if media == "photo" else ".mp4" if media == "video" else ".bin"
-                                original = f"{m.id}{ext}"
-                            original = os.path.basename(original).replace("\\", "_")
-                            # ID پیام در نام ذخیره‌سازی، جلوی تداخل نام فایل‌های هم‌نام را می‌گیرد.
-                            stem, ext = os.path.splitext(original)
-                            local_name = f"{m.id}_{stem[:100]}{ext[:16]}"
-                            target = os.path.join(folder, local_name)
-                            if not os.path.exists(target):
-                                saved_path = await client.download_media(m, file=target)
-                                if saved_path and os.path.isfile(saved_path):
-                                    item["media_name"] = original
-                                    item["media_path"] = os.path.relpath(saved_path, media_root).replace(os.sep, "/")
-                        except Exception as media_error:
-                            item["media_error"] = str(media_error)[:300]
-                out.append(item)
+            if only_ids:
+                target_ids = {int(i) for i in only_ids}
+                async for m in client.iter_messages(entity, ids=list(target_ids)):
+                    if m is None:
+                        continue
+                    out.append(await _message_item(m, channel, media_root, client))
+            else:
+                kwargs = {"limit": int(limit) if int(limit) > 0 else None}
+                if min_id:
+                    kwargs["min_id"] = int(min_id)
+                async for m in client.iter_messages(entity, **kwargs):
+                    out.append(await _message_item(m, channel, media_root, client))
             return {"ok": True, "messages": out,
                     "title": getattr(entity, "title", channel)}
         except FloodWaitError as e:
@@ -222,3 +185,54 @@ def fetch_messages(api_id: int, api_hash: str, session_string: str,
         finally:
             await _close(client)
     return _run(job)
+
+
+async def _message_item(m, channel: str, media_root: str = "", client=None) -> dict:
+    """ساخت آیتم متادیتا از پیام تلگرام + دانلود رسانه (در صورت media_root)."""
+    media = ("photo" if m.photo else "video" if m.video
+             else "audio" if (m.voice or m.audio)
+             else "document" if m.document else None)
+    item = {
+        "id": m.id,
+        "date": m.date.isoformat() if m.date else None,
+        "text": m.raw_text or "",
+        "views": m.views,
+        "forwards": m.forwards,
+        "has_media": media,
+        # آلبوم‌های تلگرام (چند عکس در یک پست) شناسه گروه مشترک دارند
+        "media_group": str(m.grouped_id) if getattr(m, "grouped_id", None) else None,
+        "link": f"https://t.me/{channel}/{m.id}",
+        "media_name": None,
+        "media_path": None,
+        "media_mime": getattr(m.document, "mime_type", None) if m.document else None,
+    }
+    # دانلود رسانه‌ها؛ خطای یک فایل نباید کل دریافت را متوقف کند.
+    # MAX_MEDIA_MB سقف حجم است (پیش‌فرض 40) — فایل بزرگ‌تر دانلود نمی‌شود
+    # تا رم/دیسک سرور محافظت شود و فقط متادیتای آن ذخیره می‌شود.
+    if media_root and m.media:
+        max_mb = float(os.environ.get("MAX_MEDIA_MB") or 40)
+        file_size = getattr(getattr(m, "file", None), "size", None)
+        if file_size and file_size > max_mb * 1024 * 1024:
+            item["media_skipped"] = f"بزرگ‌تر از سقف {max_mb:g}MB"
+        else:
+            try:
+                safe_channel = re.sub(r"[^A-Za-z0-9_.-]", "_", str(channel))
+                folder = os.path.join(media_root, safe_channel)
+                os.makedirs(folder, exist_ok=True)
+                original = getattr(getattr(m, "file", None), "name", None)
+                if not original:
+                    ext = ".jpg" if media == "photo" else ".mp4" if media == "video" else ".bin"
+                    original = f"{m.id}{ext}"
+                original = os.path.basename(original).replace("\\", "_")
+                # ID پیام در نام ذخیره‌سازی، جلوی تداخل نام فایل‌های هم‌نام را می‌گیرد.
+                stem, ext = os.path.splitext(original)
+                local_name = f"{m.id}_{stem[:100]}{ext[:16]}"
+                target = os.path.join(folder, local_name)
+                if not os.path.exists(target):
+                    saved_path = await client.download_media(m, file=target)
+                    if saved_path and os.path.isfile(saved_path):
+                        item["media_name"] = original
+                        item["media_path"] = os.path.relpath(saved_path, media_root).replace(os.sep, "/")
+            except Exception as media_error:
+                item["media_error"] = str(media_error)[:300]
+    return item

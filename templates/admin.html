@@ -82,6 +82,11 @@
             <input type="hidden" name="limit" value="2000">
             <button class="btn gray" type="submit" style="padding:5px 14px;margin-top:0">🗂 مهاجرت رسانه‌ها</button>
           </form>
+          <form method="post" action="{{ url_for('admin_repair_media') }}" style="margin:4px 0 0">
+            <input type="hidden" name="channel" value="{{ ch }}">
+            <input type="hidden" name="limit" value="100">
+            <button class="btn gray" type="submit" style="padding:5px 14px;margin-top:0">🛠 بازیابی رسانه‌ها (از تلگرام)</button>
+          </form>
         </td>
       </tr>
     {% else %}

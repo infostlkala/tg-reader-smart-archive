@@ -679,6 +679,96 @@ def admin_storage_debug():
     return jsonify(out)
 
 
+@app.route("/admin/repair-media", methods=["POST"])
+def admin_repair_media():
+    """بازیابی رسانه‌های گم‌شده از تلگرام: پیام‌هایی که media_path ثبت شده ولی
+    فایلشان روی دیسک نیست (مثلاً از دیپلوی قبل با DATA_DIR خراب باقی مانده‌اند)
+    دوباره از تلگرام دانلود و با ساختار per-post به هاست منتشر می‌شوند."""
+    r = require_admin()
+    if r:
+        return r
+    global _job_state
+    channel = request.form.get("channel", "").strip().lstrip("@")
+    limit = min(int(request.form.get("limit", 100) or 100), 500)
+    with _job_lock:
+        if _job_state.get("running"):
+            return redirect(url_for("admin", result="fetch_err=یک کار در حال اجراست؛ کمی صبر کنید."))
+        _job_state = {"running": True, "channel": channel + " (repair-media)",
+                      "result": None, "started": time.time()}
+
+    def job():
+        global _job_state
+        s = store.get_settings()
+        pub_cfg = publisher.publish_config()
+        if not (publisher.publish_enabled(pub_cfg) and pub_cfg["ftp_host"]):
+            with _job_lock:
+                _job_state = {"running": False, "channel": channel, "started": 0,
+                              "result": {"ok": False, "error": "FTP/endpoint ست نشده است."}}
+            return
+        # پیام‌هایی که رسانه اعلام شده ولی فایل محلی ندارد
+        need = []
+        for m in store.get_messages(channel, 10**9):
+            mp = m.get("media_path") or ""
+            if mp and not os.path.isfile(os.path.join(DATA_DIR, "media", mp.replace("/", os.sep))) \
+                    and not os.path.isfile(os.path.join(MEDIA_TMP_ROOT, mp.replace("/", os.sep))):
+                need.append(m)
+        need = need[:limit]
+        if not need:
+            with _job_lock:
+                _job_state = {"running": False, "channel": channel, "started": 0,
+                              "result": {"ok": True, "recovered": 0, "failed": 0}}
+            return
+        api_id = int(API_ID_ENV or s.get("api_id", "") or 0)
+        api_hash = API_HASH_ENV or s.get("api_hash", "")
+        sess = TG_SESSION_ENV or s.get("tg_session", "")
+        if not (api_id and api_hash and sess):
+            with _job_lock:
+                _job_state = {"running": False, "channel": channel, "started": 0,
+                              "result": {"ok": False, "error": "سشن تلگرام ست نشده است."}}
+            return
+        import tempfile
+        tmp_root = tempfile.mkdtemp(prefix="tg-repair-")
+        ids = [int(m["id"]) for m in need]
+        res = tg_client.fetch_messages(api_id, api_hash, sess, channel,
+                                       limit=0, min_id=0, media_root=tmp_root,
+                                       only_ids=ids)
+        recovered, failed = 0, 0
+        if res.get("ok"):
+            old_by_id = {m["id"]: m for m in need}
+            for fresh in res["messages"]:
+                old = old_by_id.get(str(fresh["id"]))
+                if not old or not fresh.get("media_path"):
+                    continue
+                # متادیتای غنی قدیمی را حفظ کن؛ رسانه را جایگزین کن
+                old.update({k: fresh[k] for k in ("media_name", "media_path",
+                                                  "media_mime") if fresh.get(k)})
+                try:
+                    if publisher.publish_message(old, pub_cfg,
+                                                 media_root=tmp_root,
+                                                 channel=channel).get("ok"):
+                        store.upsert_messages(channel, [old])
+                        recovered += 1
+                    else:
+                        failed += 1
+                except Exception as pe:
+                    failed += 1
+                    print(f"[repair] @{channel}#{old.get('id')}: {pe}", flush=True)
+            # پاک‌سازی تمپ باقی‌مانده
+            import shutil
+            shutil.rmtree(tmp_root, ignore_errors=True)
+        else:
+            failed = len(need)
+            print(f"[repair] @{channel}: fetch error {res.get('error')}", flush=True)
+        with _job_lock:
+            _job_state = {"running": False, "channel": channel, "started": 0,
+                          "result": {"ok": True, "recovered": recovered,
+                                     "failed": failed}}
+
+    threading.Thread(target=job, daemon=True).start()
+    flash(f"بازیابی رسانه‌های @{channel} شروع شد؛ نتیجه را از «وضعیت کار» ببینید.")
+    return redirect(url_for("admin"))
+
+
 @app.route("/admin/migrate-media", methods=["POST"])
 def admin_migrate_media():
     """مهاجرت رسانه‌های ذخیره‌شده روی ولوم Railway به هاست cPanel با ساختار per-post:
