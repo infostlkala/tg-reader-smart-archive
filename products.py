@@ -87,13 +87,19 @@ def ai_confirm(group: dict, base_url: str, api_key: str, model: str) -> dict:
                     "filename": f.get("media_name"),
                     "text": (f.get("text") or "")[:300]})
     prompt = AI_PROMPT.format(payload=json.dumps(payload, ensure_ascii=False))
+    # مدل اصلی اول؛ اگر پاسخ نداد (timeout/خطا) مدل‌های جایگزین سرویس امتحان می‌شوند
+    models = [model, "gpt-5.4-mini", "claude-haiku-5-5"]
+    seen = set()
     last_err = None
-    for attempt in range(2):  # یک تلاش دوباره در timeout
+    for m in models:
+        if m in seen or not m:
+            continue
+        seen.add(m)
         try:
             r = requests.post(base_url.rstrip("/") + "/chat/completions",
                               headers={"Authorization": "Bearer " + api_key,
                                        "Content-Type": "application/json"},
-                              json={"model": model, "temperature": 0.1,
+                              json={"model": m, "temperature": 0.1,
                                     "messages": [{"role": "system",
                                                   "content": "Return only valid JSON."},
                                                  {"role": "user", "content": prompt}]},
@@ -106,6 +112,11 @@ def ai_confirm(group: dict, base_url: str, api_key: str, model: str) -> dict:
             fallback = "product-" + str(group["file"]["id"])
             data["folder_name"] = _slug(str(data.get("folder_name") or ""), fallback)
             return data
-        except (requests.Timeout, requests.ConnectionError) as e:
+        except requests.HTTPError as e:
+            if "404" in str(e) or "400" in str(e):
+                continue  # مدل در این سرویس نیست؛ برو سراغ بعدی
+            last_err = e
+        except (requests.Timeout, requests.ConnectionError,
+                json.JSONDecodeError, KeyError, ValueError) as e:
             last_err = e
     raise last_err
