@@ -657,6 +657,28 @@ def admin_job_status():
                     "result": st.get("result")})
 
 
+@app.route("/admin/storage-debug")
+def admin_storage_debug():
+    """دیباگ: ساختار واقعی پوشه رسانه روی دیسک + مسیرهای ذخیره‌شده در store."""
+    r = require_admin()
+    if r:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    out = {"data_dir": DATA_DIR, "dirs": {}}
+    for root_key, root in (("DATA_DIR/media", os.path.join(DATA_DIR, "media")),
+                           ("MEDIA_TMP_ROOT", MEDIA_TMP_ROOT)):
+        entries = []
+        try:
+            for dirpath, _dirs, files in os.walk(root):
+                for f in files[:400]:
+                    entries.append(os.path.relpath(os.path.join(dirpath, f), root)
+                                   .replace(os.sep, "/"))
+        except OSError as e:
+            entries = [f"walk error: {e}"]
+        out["dirs"][root_key] = {"exists": os.path.isdir(root), "files": entries[:60],
+                                 "total": len(entries)}
+    return jsonify(out)
+
+
 @app.route("/admin/migrate-media", methods=["POST"])
 def admin_migrate_media():
     """مهاجرت رسانه‌های ذخیره‌شده روی ولوم Railway به هاست cPanel با ساختار per-post:
