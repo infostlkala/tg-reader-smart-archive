@@ -59,6 +59,9 @@
 
 <div class="card">
   <h2>۲) وضعیت و دریافت دستی</h2>
+  <div class="muted" style="margin-bottom:8px">دریافت در پس‌زمینه اجرا می‌شود (ممکن است با دانلود رسانه‌ها چند دقیقه طول بکشد) — با «وضعیت کار» نتیجه را ببینید.</div>
+  <button class="btn gray" id="job-btn" onclick="pollJob()" style="margin-bottom:8px">📋 وضعیت کار</button>
+  <div id="job-result" style="margin-bottom:10px"></div>
   <table>
     <tr><th>کانال</th><th>تعداد پیام ذخیره‌شده</th><th>دریافت دستی</th></tr>
     {% for ch, c in counts.items() %}
@@ -113,6 +116,33 @@
   <button class="btn gray" id="net-diag-btn" onclick="runNetDiag()" style="margin-inline-start:8px">🩺 عیب‌یابی کامل شبکه</button>
   <div id="tg-test-result" style="margin-top:10px"></div>
 </div>
+
+<script>
+async function pollJob() {
+  const btn = document.getElementById('job-btn');
+  const box = document.getElementById('job-result');
+  btn.disabled = true; btn.textContent = '⏳ ...';
+  try {
+    const r = await fetch('{{ url_for("admin_job_status") }}', {cache: 'no-store'});
+    const d = await r.json();
+    if (d.running) {
+      box.innerHTML = '<div class="flash">⏳ دریافت @' + d.channel + ' در حال اجراست (' + d.elapsed + ' ثانیه) — دوباره چک کنید.</div>';
+    } else if (d.result) {
+      const res = d.result;
+      box.innerHTML = res.ok
+        ? '<div class="flash">✅ دریافت @' + d.channel + ' — پیام‌های جدید: ' + (res.new || 0) +
+          ' ، منتشرشده به هاست: ' + (res.published || 0) +
+          (res.ftp_errors ? ' ، خطای FTP: ' + res.ftp_errors : '') + '</div>'
+        : '<div class="flash err">❌ دریافت @' + d.channel + ': ' + (res.error || 'خطا') + '</div>';
+    } else {
+      box.innerHTML = '<div class="muted">هنوز کاری اجرا نشده است.</div>';
+    }
+  } catch (e) {
+    box.innerHTML = '<div class="flash err">❌ خطا: ' + e + '</div>';
+  }
+  btn.disabled = false; btn.textContent = '📋 وضعیت کار';
+}
+</script>
 
 <script>
 async function runTgTest() {

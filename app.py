@@ -550,16 +550,55 @@ def admin_save():
     return redirect(url_for("admin"))
 
 
+# ---------- وضعیت کار دریافت پس‌زمینه (دریافت دستی به‌صورت async) ----------
+_job_lock = threading.Lock()
+_job_state = {"running": False, "channel": "", "result": None, "started": 0.0}
+
+
+def _run_fetch_job(channel: str):
+    """اجرای دریافت در thread جدا؛ نتیجه در _job_state ذخیره می‌شود.
+    دلیل: دریافت تاریخچه + دانلود رسانه + انتشار FTP ممکن است دقیقه‌ها طول
+    بکشد و درون درخواست HTTP باعث timeout گنجورکورن می‌شود."""
+    global _job_state
+    try:
+        res = do_fetch(channel)
+    except Exception as e:
+        res = {"ok": False, "new": 0, "error": str(e)}
+    with _job_lock:
+        _job_state = {"running": False, "channel": channel,
+                      "result": res, "started": _job_state.get("started", 0.0)}
+
+
 @app.route("/admin/fetch", methods=["POST"])
 def admin_fetch():
     r = require_admin()
     if r:
         return r
+    global _job_state
     channel = request.form.get("channel", "").strip().lstrip("@")
-    res = do_fetch(channel)
-    q = ("fetch_ok=" + json.dumps(res, ensure_ascii=False)) if res["ok"] \
-        else ("fetch_err=" + res.get("error", "خطا"))
-    return redirect(url_for("admin", result=q))
+    with _job_lock:
+        if _job_state.get("running"):
+            return redirect(url_for("admin", result="fetch_err=یک دریافت در حال اجراست؛ کمی صبر کنید."))
+        _job_state = {"running": True, "channel": channel, "result": None,
+                      "started": time.time()}
+    threading.Thread(target=_run_fetch_job, args=(channel,), daemon=True).start()
+    flash(f"دریافت @{channel} در پس‌زمینه شروع شد؛ نتیجه را از دکمه «وضعیت کار» ببینید.")
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/job-status")
+def admin_job_status():
+    r = require_admin()
+    if r:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    with _job_lock:
+        st = dict(_job_state)
+    if st.get("running"):
+        elapsed = round(time.time() - st.get("started", time.time()))
+        return jsonify({"running": True, "channel": st.get("channel"),
+                        "elapsed": elapsed})
+    return jsonify({"running": False, "channel": st.get("channel"),
+                    "result": st.get("result")})
 
 
 @app.route("/admin/relay", methods=["POST"])
