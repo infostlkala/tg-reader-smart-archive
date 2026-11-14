@@ -36,32 +36,43 @@ def _slug(text: str, fallback: str) -> str:
     return text or fallback
 
 
-def candidate_groups(msgs: list, max_gap_hours: float = 48) -> list:
+def candidate_groups(msgs: list, max_gap_hours: float = 48, max_members: int = 12) -> list:
     """msgs: پیام‌های رسانه‌دار یک کانال، مرتب جدید→قدیم (خروجی store).
-    الگوی واقعی کانال: ویدئو/آلبوم عکسِ معرفی (با متن محصول) و بلافاصله بعدش
-    پست فایل zip/stl. خروجی: [{file: msg, companions: [msg, ...]}] —
-    companions شامل هر رسانه غیرفایل (عکس/ویدئو) مجاور فایل است."""
+    الگوی واقعی کانال: ویدئو/آلبومِ معرفی (کپشن شامل نام محصول) و بلافاصله
+    بعدِ آن (زمانی) پست فایل zip/stl. یعنی در لیست جدید→قدیم، همراهانِ فایل
+    «توده پیوسته رسانه غیرفایل» بلافاصله بعدِ آن هستند (قدیمی‌تر از فایل)،
+    تا رسیدن به پست فایل بعدی.
+    خروجی: [{file: msg, photos: [msg, ...]}] — photos = رسانه‌های همراه."""
     msgs = [m for m in msgs if m.get("has_media")]
     groups = []
-    buffer = []  # رسانه‌های غیرفایل اخیر (جدید→قدیم)
     from datetime import datetime
     def dt(m):
         try:
             return datetime.fromisoformat((m.get("date") or "").replace("Z", "+00:00"))
         except ValueError:
             return None
-    for m in msgs:
-        if _file_post(m):
-            d = dt(m)
-            kept = []
-            for p in buffer:
-                dp = dt(p)
-                if d and dp and (d - dp).total_seconds() <= max_gap_hours * 3600:
-                    kept.append(p)
-            groups.append({"file": m, "photos": kept})  # photos = همه رسانه‌های همراه
-            buffer = []
-        else:
-            buffer.append(m)
+    i = 0
+    n = len(msgs)
+    while i < n:
+        m = msgs[i]
+        if not _file_post(m):
+            i += 1
+            continue
+        # توده پیوسته رسانه غیرفایل بلافاصله قدیمی‌تر از این فایل
+        companions = []
+        j = i + 1
+        d = dt(m)
+        while j < n and not _file_post(msgs[j]):
+            p = msgs[j]
+            dp = dt(p)
+            if d and dp and (d - dp).total_seconds() > max_gap_hours * 3600:
+                break
+            companions.append(p)
+            j += 1
+            if len(companions) >= max_members:
+                break
+        groups.append({"file": m, "photos": companions})
+        i = j  # ادامه از بعدِ توده
     return groups
 
 

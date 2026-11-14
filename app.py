@@ -835,11 +835,8 @@ def _group_products_job(channel: str) -> tuple:
     if not (AI_API_BASE_URL and AI_API_KEY and AI_MODEL):
         raise RuntimeError("متغیرهای AI ست نشده‌اند؛ گروه‌بندی به مدل نیاز دارد.")
     msgs = store.get_messages(channel, 10**9)
-    # پیام‌هایی که قبلاً در پوشه محصول قرار گرفته‌اند را نادیده بگیر
-    already = {str(m["id"]) for m in msgs if m.get("product_folder")}
-    media_msgs = [m for m in msgs
-                  if m.get("has_media") and str(m["id"]) not in already
-                  and m.get("media_url")]  # فقط رسانه‌هایی که فایل روی هاست دارند
+    # رسانه‌هایی که فایلشان روی هاست است (media_url ثبت شده)
+    media_msgs = [m for m in msgs if m.get("has_media") and m.get("media_url")]
     groups = products.candidate_groups(media_msgs)
     print(f"[group] @{channel}: {len(groups)} candidate group(s) found", flush=True)
     grouped_done = skipped = failed = 0
