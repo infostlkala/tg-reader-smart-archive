@@ -729,11 +729,14 @@ def admin_repair_media():
         import tempfile
         tmp_root = tempfile.mkdtemp(prefix="tg-repair-")
         ids = [int(m["id"]) for m in need]
+        print(f"[repair] @{channel}: re-fetching {len(ids)} messages: {ids[:10]}...", flush=True)
         res = tg_client.fetch_messages(api_id, api_hash, sess, channel,
                                        limit=0, min_id=0, media_root=tmp_root,
                                        only_ids=ids)
         recovered, failed = 0, 0
         if res.get("ok"):
+            print(f"[repair] @{channel}: fetched {len(res['messages'])} messages, "
+                  f"with media: {sum(1 for m in res['messages'] if m.get('media_path'))}", flush=True)
             old_by_id = {m["id"]: m for m in need}
             for fresh in res["messages"]:
                 old = old_by_id.get(str(fresh["id"]))
