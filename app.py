@@ -737,11 +737,12 @@ def admin_repair_media():
         if res.get("ok"):
             print(f"[repair] @{channel}: fetched {len(res['messages'])} messages, "
                   f"with media: {sum(1 for m in res['messages'] if m.get('media_path'))}", flush=True)
-            old_by_id = {m["id"]: m for m in need}
+            old_by_id = {str(m["id"]): m for m in need}
             for fresh in res["messages"]:
                 old = old_by_id.get(str(fresh["id"]))
                 if not old or not fresh.get("media_path"):
                     continue
+                print(f"[repair] @{channel}#{fresh['id']}: media={fresh['media_path']} — publishing", flush=True)
                 # متادیتای غنی قدیمی را حفظ کن؛ رسانه را جایگزین کن
                 old.update({k: fresh[k] for k in ("media_name", "media_path",
                                                   "media_mime") if fresh.get(k)})
