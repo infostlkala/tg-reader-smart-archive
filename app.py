@@ -841,10 +841,16 @@ def _group_products_job(channel: str) -> tuple:
                   if m.get("has_media") and str(m["id"]) not in already
                   and m.get("media_url")]  # فقط رسانه‌هایی که فایل روی هاست دارند
     groups = products.candidate_groups(media_msgs)
+    print(f"[group] @{channel}: {len(groups)} candidate group(s) found", flush=True)
     grouped_done = skipped = failed = 0
     for g in groups:
         try:
+            t0 = time.time()
             verdict = products.ai_confirm(g, AI_API_BASE_URL, AI_API_KEY, AI_MODEL)
+            print(f"[group] file#{g['file']['id']}: AI پاسخ داد در "
+                  f"{round(time.time()-t0)}s → same={verdict.get('is_same_product')} "
+                  f"conf={verdict.get('confidence')} folder={verdict.get('folder_name')}",
+                  flush=True)
             if not verdict.get("is_same_product") or float(verdict.get("confidence", 0)) < 0.5:
                 skipped += 1
                 print(f"[group] file#{g['file']['id']}: رد شد "
