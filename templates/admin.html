@@ -77,6 +77,11 @@
             <input type="hidden" name="limit" value="200">
             <button class="btn gray" type="submit" style="padding:5px 14px;margin-top:0">📤 انتشار مجدد</button>
           </form>
+          <form method="post" action="{{ url_for('admin_migrate_media') }}" style="margin:4px 0 0">
+            <input type="hidden" name="channel" value="{{ ch }}">
+            <input type="hidden" name="limit" value="2000">
+            <button class="btn gray" type="submit" style="padding:5px 14px;margin-top:0">🗂 مهاجرت رسانه‌ها</button>
+          </form>
         </td>
       </tr>
     {% else %}
@@ -134,12 +139,20 @@ async function pollJob() {
       box.innerHTML = '<div class="flash">⏳ دریافت @' + d.channel + ' در حال اجراست (' + d.elapsed + ' ثانیه) — دوباره چک کنید.</div>';
     } else if (d.result) {
       const res = d.result;
+      if (res.uploaded !== undefined) {
+        box.innerHTML = res.ok
+          ? '<div class="flash">✅ مهاجرت رسانه‌ها @' + d.channel + ' — آپلودشده: ' + res.uploaded +
+            ' ، قبلاً منتشرشده: ' + (res.skipped || 0) +
+            (res.failed ? ' ، خطا: ' + res.failed : '') + '</div>'
+          : '<div class="flash err">❌ مهاجرت: ' + (res.error || 'خطا') + '</div>';
+      } else {
       box.innerHTML = res.ok
         ? '<div class="flash">✅ دریافت @' + d.channel + ' — پیام‌های جدید: ' + (res.new || 0) +
           ' ، منتشرشده به هاست: ' + (res.published || 0) +
           (res.ai_generated ? ' ، تولید AI: ' + res.ai_generated : '') +
           (res.ftp_errors ? ' ، خطای FTP: ' + res.ftp_errors : '') + '</div>'
         : '<div class="flash err">❌ دریافت @' + d.channel + ': ' + (res.error || 'خطا') + '</div>';
+      }
     } else {
       box.innerHTML = '<div class="muted">هنوز کاری اجرا نشده است.</div>';
     }

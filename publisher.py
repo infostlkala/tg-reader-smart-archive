@@ -144,6 +144,18 @@ def post_metadata(payload: dict, cfg: dict) -> dict:
     return data
 
 
+def media_subdir(msg: dict) -> str:
+    """پوشه مقصد رسانه روی هاست؛ ساختار مرتب per-post:
+    - آلبوم (چند رسانه در یک پست): <channel>/album-<grouped_id>/
+    - پیام تکی: <channel>/post-<id>/
+    کانال خودش در FTP_REMOTE_DIR پایه است."""
+    channel = str(msg.get("channel") or "media")
+    group = msg.get("media_group")
+    if group:
+        return f"{channel}/album-{group}"
+    return f"{channel}/post-{msg.get('id', 'x')}"
+
+
 def publish_message(msg: dict, cfg: dict | None = None, media_root: str = "",
                     channel: str = "") -> dict:
     """یک پیام را منتشر می‌کند: FTP رسانه (در صورت وجود) + POST متادیتا.
@@ -163,11 +175,12 @@ def publish_message(msg: dict, cfg: dict | None = None, media_root: str = "",
     if local_media and os.path.isfile(local_media):
         if cfg["ftp_host"] and cfg["ftp_user"]:
             try:
-                channel = msg.get("channel") or "media"
                 remote_name = os.path.basename(msg["media_path"])
-                ftp_upload(local_media, cfg["ftp_remote_dir"] + "/" + channel,
+                # ساختار مرتب: هر پست/آلبوم در پوشه خودش
+                subdir = media_subdir(msg)
+                ftp_upload(local_media, cfg["ftp_remote_dir"] + "/" + subdir,
                            remote_name, cfg)
-                rel = channel + "/" + remote_name
+                rel = subdir + "/" + remote_name
                 msg["media_path"] = rel
                 if cfg["media_base_url"]:
                     msg["media_url"] = cfg["media_base_url"] + "/" + rel
@@ -188,8 +201,9 @@ def publish_message(msg: dict, cfg: dict | None = None, media_root: str = "",
     if publish_enabled(cfg):
         payload = {k: msg.get(k) for k in (
             "id", "channel", "date", "title", "description", "category", "tags",
-            "text", "views", "forwards", "has_media", "media_name", "media_path",
-            "media_url", "media_mime", "link", "ai_status")}
+            "text", "views", "forwards", "has_media", "media_group",
+            "media_name", "media_path", "media_url", "media_mime", "link",
+            "ai_status")}
         payload["id"] = str(payload.get("id"))
         # پیام‌های ذخیره‌شده در store فیلد channel ندارند؛ از پارامتر پر می‌کنیم
         payload["channel"] = msg.get("channel") or payload.get("channel") or "unknown"

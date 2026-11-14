@@ -172,6 +172,8 @@ def fetch_messages(api_id: int, api_hash: str, session_string: str,
                     "views": m.views,
                     "forwards": m.forwards,
                     "has_media": media,
+                    # آلبوم‌های تلگرام (چند عکس در یک پست) شناسه گروه مشترک دارند
+                    "media_group": str(m.grouped_id) if getattr(m, "grouped_id", None) else None,
                     "link": f"https://t.me/{channel}/{m.id}",
                     "media_name": None,
                     "media_path": None,

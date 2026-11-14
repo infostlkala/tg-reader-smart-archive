@@ -657,7 +657,64 @@ def admin_job_status():
                     "result": st.get("result")})
 
 
-@app.route("/admin/relay", methods=["POST"])
+@app.route("/admin/migrate-media", methods=["POST"])
+def admin_migrate_media():
+    """مهاجرت رسانه‌های ذخیره‌شده روی ولوم Railway به هاست cPanel با ساختار per-post:
+    <channel>/post-<id>/ یا <channel>/album-<group>/.
+    برای هر پیامِ دارای media_path محلی: FTP آپلود → پاک‌سازی محلی →
+    به‌روزرسانی media_path/media_url در store و ارسال متادیتای نو به receiver."""
+    r = require_admin()
+    if r:
+        return r
+    global _job_state
+    channel = request.form.get("channel", "").strip().lstrip("@")
+    limit = min(int(request.form.get("limit", 500) or 500), 2000)
+    with _job_lock:
+        if _job_state.get("running"):
+            return redirect(url_for("admin", result="fetch_err=یک کار در حال اجراست؛ کمی صبر کنید."))
+        _job_state = {"running": True, "channel": channel + " (migrate-media)",
+                      "result": None, "started": time.time()}
+
+    def job():
+        global _job_state
+        pub_cfg = publisher.publish_config()
+        if not (publisher.publish_enabled(pub_cfg) and pub_cfg["ftp_host"]):
+            with _job_lock:
+                _job_state = {"running": False, "channel": channel, "started": 0,
+                              "result": {"ok": False,
+                                         "error": "FTP/endpoint ست نشده است."}}
+            return
+        msgs = store.get_messages(channel, limit)
+        uploaded, skipped, fail = 0, 0, 0
+        for m in msgs:
+            mp = m.get("media_path") or ""
+            if not mp:
+                continue
+            # فقط رسانه‌هایی که هنوز محلی هستند (مسیر نسبی از media root دائمی)
+            local_path = os.path.join(DATA_DIR, "media", mp.replace("/", os.sep))
+            if not os.path.isfile(local_path):
+                skipped += 1
+                continue
+            try:
+                m["channel"] = channel
+                pr = publisher.publish_message(m, pub_cfg, media_root=os.path.join(DATA_DIR, "media"))
+                if pr.get("ok"):
+                    uploaded += 1
+                    store.upsert_messages(channel, [m])  # media_path/url جدید ذخیره شود
+                elif str(pr.get("ftp", "")).startswith("error"):
+                    fail += 1
+                    print(f"[migrate] @{channel}#{m.get('id')}: {pr.get('ftp')}", flush=True)
+            except Exception as me:
+                fail += 1
+                print(f"[migrate] @{channel}#{m.get('id')}: {me}", flush=True)
+        with _job_lock:
+            _job_state = {"running": False, "channel": channel, "started": 0,
+                          "result": {"ok": True, "uploaded": uploaded,
+                                     "skipped": skipped, "failed": fail}}
+
+    threading.Thread(target=job, daemon=True).start()
+    flash(f"مهاجرت رسانه‌های @{channel} شروع شد؛ نتیجه را از «وضعیت کار» ببینید.")
+    return redirect(url_for("admin"))
 def admin_relay():
     r = require_admin()
     if r:
