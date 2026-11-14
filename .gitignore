@@ -25,3 +25,4 @@ worker.lock
 .vscode/
 Thumbs.db
 .DS_Store
+receiver.php
