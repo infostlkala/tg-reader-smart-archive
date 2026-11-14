@@ -154,6 +154,8 @@ def do_fetch(channel: str) -> dict:
     do_publish = publisher.publish_enabled(pub_cfg)
     # وقتی انتشار فعال است، رسانه به تمپ می‌رود؛ وقتی نه، به دیسک دائمی
     media_root = MEDIA_TMP_ROOT if do_publish else os.path.join(DATA_DIR, "media")
+    print(f"[fetch] @{channel} publish={'on' if do_publish else 'off'} "
+          f"endpoint={'set' if pub_cfg.get('endpoint_url') else 'missing'}", flush=True)
     try:
         if engine == "telethon":
             api_id = int(API_ID_ENV or s.get("api_id", "") or 0)
@@ -583,6 +585,53 @@ def admin_fetch():
                       "started": time.time()}
     threading.Thread(target=_run_fetch_job, args=(channel,), daemon=True).start()
     flash(f"دریافت @{channel} در پس‌زمینه شروع شد؛ نتیجه را از دکمه «وضعیت کار» ببینید.")
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/republish", methods=["POST"])
+def admin_republish():
+    """انتشار مجدد پیام‌های ذخیره‌شده (مثلاً وقتی endpoint بعد از دریافت ست شده).
+    رسانه‌ای که محلی نیست فقط متادیتایش می‌رود؛ فایل‌های از قبل منتشرشده
+    در سمت receiver تکراری نمی‌شوند (upsert با کلید channel+id)."""
+    r = require_admin()
+    if r:
+        return r
+    global _job_state
+    channel = request.form.get("channel", "").strip().lstrip("@")
+    limit = min(int(request.form.get("limit", 100) or 100), 1000)
+    with _job_lock:
+        if _job_state.get("running"):
+            return redirect(url_for("admin", result="fetch_err=یک کار در حال اجراست؛ کمی صبر کنید."))
+        _job_state = {"running": True, "channel": channel + " (republish)",
+                      "result": None, "started": time.time()}
+
+    def job():
+        global _job_state
+        pub_cfg = publisher.publish_config()
+        if not publisher.publish_enabled(pub_cfg):
+            with _job_lock:
+                _job_state = {"running": False,
+                              "channel": channel, "started": 0,
+                              "result": {"ok": False, "error": "PUBLISH_ENDPOINT_URL/PUBLISH_SECRET ست نشده است."}}
+            return
+        msgs = store.get_messages(channel, limit)
+        ok, fail = 0, 0
+        for m in msgs:
+            try:
+                if publisher.publish_message(m, pub_cfg, media_root="").get("ok"):
+                    ok += 1
+                else:
+                    fail += 1
+            except Exception as pe:
+                fail += 1
+                print(f"[republish] @{channel}#{m.get('id')}: {pe}", flush=True)
+        with _job_lock:
+            _job_state = {"running": False, "channel": channel, "started": 0,
+                          "result": {"ok": True, "new": len(msgs),
+                                     "published": ok, "ftp_errors": fail}}
+
+    threading.Thread(target=job, daemon=True).start()
+    flash(f"انتشار مجدد {limit} پیام @{channel} شروع شد؛ نتیجه را از «وضعیت کار» ببینید.")
     return redirect(url_for("admin"))
 
 
