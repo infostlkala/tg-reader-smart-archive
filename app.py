@@ -615,9 +615,16 @@ def admin_republish():
                               "result": {"ok": False, "error": "PUBLISH_ENDPOINT_URL/PUBLISH_SECRET ست نشده است."}}
             return
         msgs = store.get_messages(channel, limit)
-        ok, fail = 0, 0
+        ok, fail, ai_ok = 0, 0, 0
         for m in msgs:
             try:
+                # backfill هوشمند: اگر پیام متادیتای پایه دارد و AI تنظیم است،
+                # اول عنوان/دسته/تگ فارسی تولید و در store به‌روزرسانی می‌شود
+                if m.get("ai_status") == "fallback" and (AI_API_BASE_URL and AI_API_KEY and AI_MODEL):
+                    m = enrich_message(m, channel)
+                    if m.get("ai_status") == "generated":
+                        ai_ok += 1
+                        store.upsert_messages(channel, [m])
                 if publisher.publish_message(m, pub_cfg, media_root="", channel=channel).get("ok"):
                     ok += 1
                 else:
@@ -627,8 +634,8 @@ def admin_republish():
                 print(f"[republish] @{channel}#{m.get('id')}: {pe}", flush=True)
         with _job_lock:
             _job_state = {"running": False, "channel": channel, "started": 0,
-                          "result": {"ok": True, "new": len(msgs),
-                                     "published": ok, "ftp_errors": fail}}
+                          "result": {"ok": True, "new": len(msgs), "published": ok,
+                                     "ftp_errors": fail, "ai_generated": ai_ok}}
 
     threading.Thread(target=job, daemon=True).start()
     flash(f"انتشار مجدد {limit} پیام @{channel} شروع شد؛ نتیجه را از «وضعیت کار» ببینید.")

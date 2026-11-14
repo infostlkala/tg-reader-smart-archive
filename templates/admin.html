@@ -137,6 +137,7 @@ async function pollJob() {
       box.innerHTML = res.ok
         ? '<div class="flash">✅ دریافت @' + d.channel + ' — پیام‌های جدید: ' + (res.new || 0) +
           ' ، منتشرشده به هاست: ' + (res.published || 0) +
+          (res.ai_generated ? ' ، تولید AI: ' + res.ai_generated : '') +
           (res.ftp_errors ? ' ، خطای FTP: ' + res.ftp_errors : '') + '</div>'
         : '<div class="flash err">❌ دریافت @' + d.channel + ': ' + (res.error || 'خطا') + '</div>';
     } else {
