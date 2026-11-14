@@ -128,7 +128,12 @@ def post_metadata(payload: dict, cfg: dict) -> dict:
                 os.remove(tmp_path)
             except OSError:
                 pass
-    # fallback: کتابخانه requests (روی هاست‌هایی که فیلتر TLS ندارند)
+    # لایه ۲: pycurl (انگشت‌نگاری libcurl — فایروال‌های ضد پایتون را رد می‌کند)
+    try:
+        return _post_with_pycurl(cfg, body)
+    except ImportError:
+        pass  # نصب نیست؛ به requests می‌رویم
+    # لایه ۳ (fallback): requests — روی هاست‌هایی که فیلتر TLS ندارند
     import requests
     r = requests.post(
         cfg["endpoint_url"],
@@ -141,6 +146,36 @@ def post_metadata(payload: dict, cfg: dict) -> dict:
     data = r.json() if "json" in (r.headers.get("Content-Type") or "") else {}
     if not data.get("ok"):
         raise RuntimeError("endpoint پاسخ ناموفق: " + str(data)[:300])
+    return data
+
+
+def _post_with_pycurl(cfg: dict, body: bytes) -> dict:
+    import pycurl
+    import io
+    buf = io.BytesIO()
+    c = pycurl.Curl()
+    c.setopt(c.URL, cfg["endpoint_url"])
+    c.setopt(c.POST, 1)
+    c.setopt(c.POSTFIELDS, body)
+    c.setopt(c.HTTPHEADER, ["X-Auth-Secret: " + cfg["secret"],
+                            "Content-Type: application/json; charset=utf-8"])
+    c.setopt(c.WRITEDATA, buf)
+    c.setopt(c.TIMEOUT, 30)
+    c.setopt(c.HTTP_VERSION, pycurl.CURL_HTTP_VERSION_1_1)
+    c.setopt(c.SSL_VERIFYPEER, 0)
+    c.setopt(c.SSL_VERIFYHOST, 0)
+    c.perform()
+    status = c.getinfo(c.RESPONSE_CODE)
+    c.close()
+    text = buf.getvalue().decode("utf-8", "replace")
+    if status not in (200, 201, 204):
+        raise RuntimeError(f"endpoint HTTP {status}: {text[:200]}")
+    try:
+        data = json.loads(text)
+    except ValueError:
+        data = {}
+    if not data.get("ok"):
+        raise RuntimeError("endpoint پاسخ ناموفق: " + text[:300])
     return data
 
 

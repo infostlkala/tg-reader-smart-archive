@@ -6,3 +6,4 @@ Telethon==1.36.0
 python-socks[asyncio]==2.4.0
 PySocks==1.7.1
 gunicorn==22.0.0
+pycurl==7.45.4
