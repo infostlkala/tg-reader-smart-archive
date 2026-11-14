@@ -828,27 +828,47 @@ def admin_group_products():
 
 
 def _group_products_job(channel: str) -> tuple:
-    """اجزای اجرایی گروه‌بندی؛ خروجی: (گروه‌بندی‌شده، ردشده، خطا)."""
+    """اجزای اجرایی گروه‌بندی؛ خروجی: (گروه‌بندی‌شده، ردشده، خطا).
+    اگر AI در دسترس نباشد (502/timeout)، نام فایل به‌عنوان نام پوشه استفاده
+    می‌شود (fallback قاعده‌مند) — بعداً با دکمه دوباره اجرا شود تا AI بگذارد."""
     pub_cfg = publisher.publish_config()
     if not publisher.publish_enabled(pub_cfg):
         raise RuntimeError("PUBLISH_ENDPOINT_URL/PUBLISH_SECRET ست نشده است.")
-    if not (AI_API_BASE_URL and AI_API_KEY and AI_MODEL):
-        raise RuntimeError("متغیرهای AI ست نشده‌اند؛ گروه‌بندی به مدل نیاز دارد.")
+    ai_ready = bool(AI_API_BASE_URL and AI_API_KEY and AI_MODEL)
     msgs = store.get_messages(channel, 10**9)
     # رسانه‌هایی که فایلشان روی هاست است (media_url ثبت شده)
     media_msgs = [m for m in msgs if m.get("has_media") and m.get("media_url")]
     groups = products.candidate_groups(media_msgs)
-    print(f"[group] @{channel}: {len(groups)} candidate group(s) found", flush=True)
+    print(f"[group] @{channel}: {len(groups)} candidate group(s), "
+          f"ai={'ready' if ai_ready else 'UNAVAILABLE (filename fallback)'}", flush=True)
     grouped_done = skipped = failed = 0
     for g in groups:
         try:
-            t0 = time.time()
-            verdict = products.ai_confirm(g, AI_API_BASE_URL, AI_API_KEY, AI_MODEL,
-                                          all_msgs=msgs)
-            print(f"[group] file#{g['file']['id']}: AI پاسخ داد در "
-                  f"{round(time.time()-t0)}s → same={verdict.get('is_same_product')} "
-                  f"conf={verdict.get('confidence')} folder={verdict.get('folder_name')}",
-                  flush=True)
+            verdict = None
+            if ai_ready:
+                try:
+                    t0 = time.time()
+                    verdict = products.ai_confirm(g, AI_API_BASE_URL, AI_API_KEY, AI_MODEL,
+                                                  all_msgs=msgs)
+                    print(f"[group] file#{g['file']['id']}: AI پاسخ داد در "
+                          f"{round(time.time()-t0)}s → same={verdict.get('is_same_product')} "
+                          f"conf={verdict.get('confidence')} folder={verdict.get('folder_name')}",
+                          flush=True)
+                except Exception as ai_err:
+                    # AI در دسترس نیست (502/timeout) — نام فایل، نام پوشه
+                    stem = os.path.splitext(g["file"].get("media_name") or "")[0]
+                    slug = products._slug(stem, f"product-{g['file']['id']}")
+                    verdict = {"is_same_product": True, "confidence": 0.5,
+                               "folder_name": slug, "ai_used": False}
+                    print(f"[group] file#{g['file']['id']}: AI خطا داد "
+                          f"({str(ai_err)[:80]}) → fallback نام فایل: '{slug}'", flush=True)
+            else:
+                stem = os.path.splitext(g["file"].get("media_name") or "")[0]
+                slug = products._slug(stem, f"product-{g['file']['id']}")
+                verdict = {"is_same_product": True, "confidence": 0.5,
+                           "folder_name": slug, "ai_used": False}
+                print(f"[group] file#{g['file']['id']}: بدون AI → نام فایل: '{slug}'",
+                      flush=True)
             if not verdict.get("is_same_product") or float(verdict.get("confidence", 0)) < 0.5:
                 skipped += 1
                 print(f"[group] file#{g['file']['id']}: رد شد "
