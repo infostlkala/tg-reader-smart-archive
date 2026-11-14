@@ -178,7 +178,7 @@ def do_fetch(channel: str) -> dict:
             if do_publish:
                 for m in msgs:
                     try:
-                        pr = publisher.publish_message(m, pub_cfg, media_root=media_root)
+                        pr = publisher.publish_message(m, pub_cfg, media_root=media_root, channel=channel)
                         if pr.get("ok"):
                             published += 1
                         if str(pr.get("ftp", "")).startswith("error"):
@@ -199,7 +199,7 @@ def do_fetch(channel: str) -> dict:
             if do_publish:
                 for m in msgs:
                     try:
-                        if publisher.publish_message(m, pub_cfg, media_root=media_root).get("ok"):
+                        if publisher.publish_message(m, pub_cfg, media_root=media_root, channel=channel).get("ok"):
                             published += 1
                         store.upsert_messages(channel, [m])
                     except Exception as pe:
@@ -618,7 +618,7 @@ def admin_republish():
         ok, fail = 0, 0
         for m in msgs:
             try:
-                if publisher.publish_message(m, pub_cfg, media_root="").get("ok"):
+                if publisher.publish_message(m, pub_cfg, media_root="", channel=channel).get("ok"):
                     ok += 1
                 else:
                     fail += 1

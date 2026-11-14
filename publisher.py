@@ -144,11 +144,15 @@ def post_metadata(payload: dict, cfg: dict) -> dict:
     return data
 
 
-def publish_message(msg: dict, cfg: dict | None = None, media_root: str = "") -> dict:
+def publish_message(msg: dict, cfg: dict | None = None, media_root: str = "",
+                    channel: str = "") -> dict:
     """یک پیام را منتشر می‌کند: FTP رسانه (در صورت وجود) + POST متادیتا.
     پیام را درجا ویرایش می‌کند: media_path به مسیر روی هاست و media_url به آدرس عمومی تبدیل می‌شود.
+    channel: نام کانال (پیام‌های store این فیلد را ندارند).
     خروجی: {"ok": bool, "ftp": ..., "post": ...} — فقط برای لاگ."""
     cfg = cfg or publish_config()
+    if channel:
+        msg["channel"] = channel
     result = {"ok": False, "ftp": "-", "post": "-"}
 
     # ۱) رسانه: دانلود قبلاً در media_root انجام شده؛ حالا FTP و پاک‌سازی تمپ
@@ -187,6 +191,8 @@ def publish_message(msg: dict, cfg: dict | None = None, media_root: str = "") ->
             "text", "views", "forwards", "has_media", "media_name", "media_path",
             "media_url", "media_mime", "link", "ai_status")}
         payload["id"] = str(payload.get("id"))
+        # پیام‌های ذخیره‌شده در store فیلد channel ندارند؛ از پارامتر پر می‌کنیم
+        payload["channel"] = msg.get("channel") or payload.get("channel") or "unknown"
         post_metadata(payload, cfg)
         result["post"] = "ok"
     else:
