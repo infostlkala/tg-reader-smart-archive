@@ -176,9 +176,10 @@ def publish_message(msg: dict, cfg: dict | None = None, media_root: str = "",
         if cfg["ftp_host"] and cfg["ftp_user"]:
             try:
                 remote_name = os.path.basename(msg["media_path"])
-                # ساختار مرتب: هر پست/آلبوم در پوشه خودش
+                # ساختار مرتب: هر پست/آلبوم در پوشه خودش؛ زیرِ ریشه FTP
                 subdir = media_subdir(msg)
-                ftp_upload(local_media, cfg["ftp_remote_dir"] + "/" + subdir,
+                base = cfg["ftp_remote_dir"]
+                ftp_upload(local_media, base + "/" + subdir if base else subdir,
                            remote_name, cfg)
                 rel = subdir + "/" + remote_name
                 msg["media_path"] = rel
