@@ -14,6 +14,10 @@
 """
 import os
 import ftplib
+import json
+import shutil
+import subprocess
+import tempfile
 
 
 def publish_config() -> dict:
@@ -85,12 +89,52 @@ def ftp_upload(local_path: str, remote_dir: str, remote_name: str, cfg: dict) ->
 
 
 def post_metadata(payload: dict, cfg: dict) -> dict:
-    """POST متادیتا به receiver.php روی cPanel."""
+    """POST متادیتا به receiver.php روی cPanel.
+
+    فایروال برخی هاست‌های ایرانی ClientHello کتابخانه ssl پایتون (OpenSSL)
+    را تشخیص می‌دهد و Connection را reset می‌کند؛ ولی curl (Schannel/GnuTLS)
+    رد می‌شود. پس اول با curl subprocess می‌فرستیم و در نبود curl به requests
+    برمی‌گردیم."""
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    curl = shutil.which("curl")
+    if curl:
+        fd, tmp_path = tempfile.mkstemp(suffix=".json")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(body)
+            cmd = [curl, "-sk", "-m", "30", "-X", "POST", cfg["endpoint_url"],
+                   "-H", "X-Auth-Secret: " + cfg["secret"],
+                   "-H", "Content-Type: application/json; charset=utf-8",
+                   "--data-binary", "@" + tmp_path,
+                   "-w", "\n%{http_code}"]
+            pr = subprocess.run(cmd, capture_output=True, timeout=40)
+            out = pr.stdout.decode("utf-8", "replace")
+            if not out.strip():
+                raise RuntimeError("curl پاسخ خالی داد" +
+                                   (": " + pr.stderr.decode("utf-8", "replace")[:200]
+                                    if pr.stderr else ""))
+            body_txt, _, http_code = out.strip().rpartition("\n")
+            if http_code.strip() not in ("200", "201", "204"):
+                raise RuntimeError(f"endpoint HTTP {http_code.strip()}: {body_txt[:200]}")
+            try:
+                data = json.loads(body_txt)
+            except ValueError:
+                data = {}
+            if not data.get("ok"):
+                raise RuntimeError("endpoint پاسخ ناموفق: " + body_txt[:300])
+            return data
+        finally:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+    # fallback: کتابخانه requests (روی هاست‌هایی که فیلتر TLS ندارند)
     import requests
     r = requests.post(
         cfg["endpoint_url"],
-        json=payload,
-        headers={"X-Auth-Secret": cfg["secret"], "Content-Type": "application/json"},
+        data=body,
+        headers={"X-Auth-Secret": cfg["secret"],
+                 "Content-Type": "application/json; charset=utf-8"},
         timeout=30,
     )
     r.raise_for_status()
