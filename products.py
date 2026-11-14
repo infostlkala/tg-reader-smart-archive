@@ -38,11 +38,13 @@ def _slug(text: str, fallback: str) -> str:
 
 def candidate_groups(msgs: list, max_gap_hours: float = 48) -> list:
     """msgs: پیام‌های رسانه‌دار یک کانال، مرتب جدید→قدیم (خروجی store).
-    خروجی: [{file: msg, photos: [msg, ...]}] بر اساس الگوی کانال."""
+    الگوی واقعی کانال: ویدئو/آلبوم عکسِ معرفی (با متن محصول) و بلافاصله بعدش
+    پست فایل zip/stl. خروجی: [{file: msg, companions: [msg, ...]}] —
+    companions شامل هر رسانه غیرفایل (عکس/ویدئو) مجاور فایل است."""
     msgs = [m for m in msgs if m.get("has_media")]
     groups = []
-    photos_buffer = []  # پست‌های عکس که هنوز فایلشان نیامده (جدید→قدیم)
-    from datetime import datetime, timezone
+    buffer = []  # رسانه‌های غیرفایل اخیر (جدید→قدیم)
+    from datetime import datetime
     def dt(m):
         try:
             return datetime.fromisoformat((m.get("date") or "").replace("Z", "+00:00"))
@@ -52,42 +54,61 @@ def candidate_groups(msgs: list, max_gap_hours: float = 48) -> list:
         if _file_post(m):
             d = dt(m)
             kept = []
-            for p in photos_buffer:
+            for p in buffer:
                 dp = dt(p)
                 if d and dp and (d - dp).total_seconds() <= max_gap_hours * 3600:
                     kept.append(p)
-            if kept:
-                groups.append({"file": m, "photos": list(reversed(kept))})
-            photos_buffer = []
-        elif _photo_post(m):
-            photos_buffer.append(m)
-        # سایر رسانه‌ها (ویدئو و...) فعلاً نادیده
+            groups.append({"file": m, "photos": kept})  # photos = همه رسانه‌های همراه
+            buffer = []
+        else:
+            buffer.append(m)
     return groups
+
+
+def context_texts(msgs: list, file_id: str, window: int = 2) -> dict:
+    """متن پست‌های متنیِ نزدیک (هر نوع، شامل متن‌دار) در پنجره id —
+    چون متن محصول معمولاً روی پست ویدئویی/عکسیِ کنار فایل است."""
+    out = {}
+    ordered = sorted(msgs, key=lambda m: int(m["id"]), reverse=True)
+    idx = next((i for i, m in enumerate(ordered) if str(m["id"]) == str(file_id)), None)
+    if idx is None:
+        return out
+    for m in ordered[max(0, idx - window): idx + window + 1]:
+        t = (m.get("text") or "").strip()
+        if t and str(m["id"]) != str(file_id):
+            out[str(m["id"])] = t[:300]
+    return out
 
 
 AI_PROMPT = (
     "You group Telegram posts of a 3D-printing channel into products. "
-    "A product = several photo posts + one file post (zip/stl) that belongs "
-    "to the same 3D model. Given the posts below, decide if they form ONE "
-    "product. Return ONLY valid JSON with keys: "
+    "The channel's pattern: a video/photo post introducing the product "
+    "(with the product name in its caption) followed immediately by the "
+    "file post (zip/stl) of that same product. Given the file post's "
+    "filename and the nearby post captions below, decide if these posts "
+    "belong to ONE product. Return ONLY valid JSON with keys: "
     '"is_same_product" (bool), "folder_name" (short English slug like '
     '"gyro-cup-stroller" — no spaces, lowercase, hyphens), '
     '"confidence" (0-1). Posts JSON:\n{payload}\n'
 )
 
 
-def ai_confirm(group: dict, base_url: str, api_key: str, model: str) -> dict:
-    """پرسش از مدل سازگار با OpenAI: این مجموعه یک محصول است؟ نام پوشه؟"""
+def ai_confirm(group: dict, base_url: str, api_key: str, model: str,
+               all_msgs: list | None = None) -> dict:
+    """پرسش از مدل سازگار با OpenAI: این مجموعه یک محصول است؟ نام پوشه؟
+    all_msgs برای گرفتن متن پست‌های متنی مجاور فایل (ویدئوی معرفی و...)."""
     payload = []
     for p in group["photos"]:
-        payload.append({"type": "photo", "id": p["id"],
+        payload.append({"type": p.get("has_media") or "media", "id": p["id"],
                         "text": (p.get("text") or "")[:300]})
     f = group["file"]
     payload.append({"type": "file", "id": f["id"],
                     "filename": f.get("media_name"),
                     "text": (f.get("text") or "")[:300]})
+    if all_msgs:
+        for mid, txt in context_texts(all_msgs, f["id"]).items():
+            payload.append({"type": "caption-nearby", "id": mid, "text": txt})
     prompt = AI_PROMPT.format(payload=json.dumps(payload, ensure_ascii=False))
-    # مدل اصلی اول؛ اگر پاسخ نداد (timeout/خطا) مدل‌های جایگزین سرویس امتحان می‌شوند
     models = [model, "gpt-5.4-mini", "claude-haiku-5-5"]
     seen = set()
     last_err = None
@@ -114,7 +135,7 @@ def ai_confirm(group: dict, base_url: str, api_key: str, model: str) -> dict:
             return data
         except requests.HTTPError as e:
             if "404" in str(e) or "400" in str(e):
-                continue  # مدل در این سرویس نیست؛ برو سراغ بعدی
+                continue
             last_err = e
         except (requests.Timeout, requests.ConnectionError,
                 json.JSONDecodeError, KeyError, ValueError) as e:

@@ -846,7 +846,8 @@ def _group_products_job(channel: str) -> tuple:
     for g in groups:
         try:
             t0 = time.time()
-            verdict = products.ai_confirm(g, AI_API_BASE_URL, AI_API_KEY, AI_MODEL)
+            verdict = products.ai_confirm(g, AI_API_BASE_URL, AI_API_KEY, AI_MODEL,
+                                          all_msgs=msgs)
             print(f"[group] file#{g['file']['id']}: AI پاسخ داد در "
                   f"{round(time.time()-t0)}s → same={verdict.get('is_same_product')} "
                   f"conf={verdict.get('confidence')} folder={verdict.get('folder_name')}",
