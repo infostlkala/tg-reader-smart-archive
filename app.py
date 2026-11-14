@@ -19,6 +19,7 @@ from store import Store
 import scraper
 import tg_client
 import publisher
+import products
 
 # ---------- متغیرهای محیطی (در پنل Railway/لیارا تنظیم می‌شوند) ----------
 # روی Railway یک Volume بچسبانید (مثلاً /data) و DATA_DIR را همان قرار دهید؛
@@ -144,6 +145,24 @@ def guess_category(filename: str, text_body: str, media_type: str) -> str:
 MEDIA_TMP_ROOT = os.environ.get("MEDIA_TMP_ROOT", "/tmp/tg-media")
 
 
+def _auto_group_new(channel: str, new_msgs: list) -> int:
+    """بعد از دریافت پیام‌های جدید: اگر پست فایل‌دار جدید رسیده و عکس‌های
+    پیش از آن هم تازه‌اند، همان لحظه گروه‌بندی محصول انجام می‌شود.
+    خروجی: تعداد محصول ساخته‌شده (۰ = کاری انجام نشد یا AI آماده نبود)."""
+    if not new_msgs or not (AI_API_BASE_URL and AI_API_KEY and AI_MODEL):
+        return 0
+    if not any(products._file_post(m) for m in new_msgs):
+        return 0  # پست فایل‌دار جدیدی نیست؛ الگوی محصول تکمیل نشده
+    try:
+        grouped, _, _ = _group_products_job(channel)
+        if grouped:
+            print(f"[group] @{channel}: auto-grouped {grouped} product(s)", flush=True)
+        return grouped
+    except Exception as ge:
+        print(f"[group] @{channel}: auto failed: {ge}", flush=True)
+        return 0
+
+
 def do_fetch(channel: str) -> dict:
     """یک بار دریافت پیام‌های جدید یک کانال و ذخیره (افزایشی، بر اساس min_id).
     اگر انتشار (endpoint/FTP) تنظیم شده باشد، هر پیام به cPanel منتشر می‌شود و
@@ -188,7 +207,8 @@ def do_fetch(channel: str) -> dict:
                         print(f"[publish] @{channel}#{m.get('id')}: {pe}", flush=True)
             return {"ok": True, "new": len(msgs), "title": res.get("title", ""),
                     "downloaded": sum(1 for m in msgs if m.get("media_path")),
-                    "published": published, "ftp_errors": ftp_errors}
+                    "published": published, "ftp_errors": ftp_errors,
+                    "grouped": _auto_group_new(channel, msgs)}
         else:  # web
             msgs = scraper.fetch_new(channel,
                                      max_pages=s.get("web_max_pages", 5),
@@ -771,6 +791,137 @@ def admin_repair_media():
     threading.Thread(target=job, daemon=True).start()
     flash(f"بازیابی رسانه‌های @{channel} شروع شد؛ نتیجه را از «وضعیت کار» ببینید.")
     return redirect(url_for("admin"))
+
+
+@app.route("/admin/group-products", methods=["POST"])
+def admin_group_products():
+    """گروه‌بندی هوشمند محصولات: عکس‌های پست‌های متوالی + فایل زیرشان = یک محصول.
+    با AI تأیید و نام پوشه انگلیسی می‌سازد؛ رسانه‌ها روی هاست به پوشه محصول
+    منتقل و متادیتا (product_folder) به‌روز می‌شود."""
+    r = require_admin()
+    if r:
+        return r
+    global _job_state
+    channel = request.form.get("channel", "").strip().lstrip("@")
+    with _job_lock:
+        if _job_state.get("running"):
+            return redirect(url_for("admin", result="fetch_err=یک کار در حال اجراست؛ کمی صبر کنید."))
+            _job_state = {"running": True, "channel": channel + " (group-products)",
+                      "result": None, "started": time.time()}
+
+    def job():
+        global _job_state
+        try:
+            groups_done, skipped, failed = _group_products_job(channel)
+            with _job_lock:
+                _job_state = {"running": False, "channel": channel, "started": 0,
+                              "result": {"ok": True, "grouped": groups_done,
+                                         "skipped": skipped, "failed": failed}}
+        except Exception as e:
+            with _job_lock:
+                _job_state = {"running": False, "channel": channel, "started": 0,
+                              "result": {"ok": False, "error": str(e)[:300]}}
+
+    threading.Thread(target=job, daemon=True).start()
+    flash(f"گروه‌بندی محصولات @{channel} شروع شد؛ نتیجه را از «وضعیت کار» ببینید.")
+    return redirect(url_for("admin"))
+
+
+def _group_products_job(channel: str) -> tuple:
+    """اجزای اجرایی گروه‌بندی؛ خروجی: (گروه‌بندی‌شده، ردشده، خطا)."""
+    pub_cfg = publisher.publish_config()
+    if not publisher.publish_enabled(pub_cfg):
+        raise RuntimeError("PUBLISH_ENDPOINT_URL/PUBLISH_SECRET ست نشده است.")
+    if not (AI_API_BASE_URL and AI_API_KEY and AI_MODEL):
+        raise RuntimeError("متغیرهای AI ست نشده‌اند؛ گروه‌بندی به مدل نیاز دارد.")
+    msgs = store.get_messages(channel, 10**9)
+    # پیام‌هایی که قبلاً در پوشه محصول قرار گرفته‌اند را نادیده بگیر
+    already = {str(m["id"]) for m in msgs if m.get("product_folder")}
+    media_msgs = [m for m in msgs
+                  if m.get("has_media") and str(m["id"]) not in already
+                  and m.get("media_url")]  # فقط رسانه‌هایی که فایل روی هاست دارند
+    groups = products.candidate_groups(media_msgs)
+    grouped_done = skipped = failed = 0
+    for g in groups:
+        try:
+            verdict = products.ai_confirm(g, AI_API_BASE_URL, AI_API_KEY, AI_MODEL)
+            if not verdict.get("is_same_product") or float(verdict.get("confidence", 0)) < 0.5:
+                skipped += 1
+                print(f"[group] file#{g['file']['id']}: رد شد "
+                      f"(confidence={verdict.get('confidence')})", flush=True)
+                continue
+            folder = verdict["folder_name"]
+            print(f"[group] file#{g['file']['id']}: پوشه '{folder}' با "
+                  f"{len(g['photos'])} عکس", flush=True)
+            _move_media_to_product(channel, folder, g["file"], g["photos"], pub_cfg)
+            grouped_done += 1
+        except Exception as ge:
+            failed += 1
+            print(f"[group] file#{g['file']['id']}: خطا {ge}", flush=True)
+    return grouped_done, skipped, failed
+
+
+def _move_media_to_product(channel: str, folder: str, file_msg: dict,
+                           photos: list, pub_cfg: dict):
+    """انتقال رسانه‌های یک گروه به پوشه محصول روی هاست + به‌روزرسانی store."""
+    base = pub_cfg["ftp_remote_dir"] or ""
+    if base:
+        base = base.rstrip("/") + "/"
+    media_msgs = [file_msg] + list(photos)
+    moved = 0
+    for m in media_msgs:
+        old_rel = m.get("media_path") or ""
+        old_url = m.get("media_url") or ""
+        if not old_rel or not old_url:
+            continue
+        new_rel = f"{channel}/{folder}/{os.path.basename(old_rel)}"
+        old_ftp = base + old_rel
+        new_ftp = base + new_rel
+        # جابجایی روی هاست: دانلود→آپلود→حذف (FTPS نداریم؛ FTP ساده کافی است)
+        try:
+            import ftplib
+            ftp = publisher._ftp_connect(pub_cfg)
+            import tempfile as _tf
+            fd, tmp = _tf.mkstemp()
+            os.close(fd)
+            with open(tmp, "wb") as f:
+                ftp.retrbinary("RETR " + old_ftp, f.write, blocksize=1024 * 256)
+            publisher.ftp_upload(tmp, base + f"{channel}/{folder}",
+                                 os.path.basename(old_rel), pub_cfg)
+            try:
+                ftp.delete(old_ftp)
+            except Exception:
+                pass
+            try:
+                ftp.quit()
+            except Exception:
+                ftp.close()
+            os.remove(tmp)
+            m["media_path"] = new_rel
+            m["media_url"] = pub_cfg["media_base_url"] + "/" + new_rel
+            m["product_folder"] = folder
+            store.upsert_messages(channel, [m])
+            moved += 1
+        except Exception as me:
+            print(f"[group] move {old_rel}: {me}", flush=True)
+            try:
+                ftp.quit()
+            except Exception:
+                pass
+    # متادیتای همه اعضای گروه به receiver (product_folder ثبت شود)
+    for m in media_msgs:
+            try:
+                payload = {k: m.get(k) for k in (
+                    "id", "channel", "date", "title", "description", "category",
+                    "tags", "text", "views", "forwards", "has_media",
+                    "media_group", "media_name", "media_path", "media_url",
+                    "media_mime", "link", "ai_status", "product_folder")}
+                payload["id"] = str(payload.get("id"))
+                payload["channel"] = channel
+                publisher.post_metadata(payload, pub_cfg)
+            except Exception as pe:
+                print(f"[group] metadata {m.get('id')}: {pe}", flush=True)
+    return moved
 
 
 @app.route("/admin/migrate-media", methods=["POST"])
