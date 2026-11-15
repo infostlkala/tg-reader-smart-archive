@@ -189,7 +189,7 @@ def do_fetch(channel: str, full_history: bool = False,
             res = tg_client.fetch_messages(
                 api_id, api_hash, sess, channel,
                 limit=fetch_limit or s.get("history_limit", 100),
-                min_id=0 if full_history else (store.latest_id(channel) or 0),
+                min_id=0 if (full_history or offset_id) else (store.latest_id(channel) or 0),
                 media_root=media_root,
                 offset_id=offset_id)
             if not res.get("ok"):
