@@ -1135,6 +1135,9 @@ def admin_migrate_media():
     threading.Thread(target=job, daemon=True).start()
     flash(f"مهاجرت رسانه‌های @{channel} شروع شد؛ نتیجه را از «وضعیت کار» ببینید.")
     return redirect(url_for("admin"))
+
+
+@app.route("/admin/relay", methods=["POST"])
 def admin_relay():
     r = require_admin()
     if r:
