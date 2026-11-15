@@ -47,11 +47,11 @@ function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
 function is_gif(array $m): bool {
     $n = strtolower((string)$m['media_name']);
-    return str_ends_with($n, '.gif') || (string)$m['media_mime'] === 'image/gif';
+    return substr($n, -4) === '.gif' || (string)$m['media_mime'] === 'image/gif';
 }
 
 function is_video(array $m): bool {
-    return $m['has_media'] === 'video' || str_starts_with((string)$m['media_mime'], 'video/');
+    return $m['has_media'] === 'video' || substr((string)$m['media_mime'], 0, 6) === 'video/';
 }
 
 function is_visual(array $m): bool {
