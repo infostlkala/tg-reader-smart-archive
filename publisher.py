@@ -250,3 +250,48 @@ def publish_message(msg: dict, cfg: dict | None = None, media_root: str = "",
 
     result["ok"] = result["post"] == "ok"
     return result
+
+
+def post_metadata_batch(payloads: list, cfg: dict) -> dict:
+    """ارسال گروهی متادیتا (یک درخواست برای همه اعضای گروه) — بسیار سریع‌تر."""
+    body = json.dumps(payloads, ensure_ascii=False).encode("utf-8")
+    curl = shutil.which("curl")
+    if curl:
+        fd, tmp_path = tempfile.mkstemp(suffix=".json")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(body)
+            cmd = [curl, "-sk", "-m", "60", "-X", "POST", cfg["endpoint_url"],
+                   "-H", "X-Auth-Secret: " + cfg["secret"],
+                   "-H", "Content-Type: application/json; charset=utf-8",
+                   "--data-binary", "@" + tmp_path,
+                   "-w", chr(10) + "%{http_code}"]
+            pr = subprocess.run(cmd, capture_output=True, timeout=90)
+            out = pr.stdout.decode("utf-8", "replace")
+            if not out.strip():
+                raise RuntimeError("curl پاسخ خالی داد")
+            body_txt, _, http_code = out.strip().rpartition(chr(10))
+            if http_code.strip() not in ("200", "201", "204"):
+                raise RuntimeError(f"endpoint HTTP {http_code.strip()}: {body_txt[:200]}")
+            try:
+                data = json.loads(body_txt)
+            except ValueError:
+                data = {}
+            if not data.get("ok"):
+                raise RuntimeError("endpoint پاسخ ناموفق: " + body_txt[:300])
+            return data
+        finally:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+    import requests
+    r = requests.post(cfg["endpoint_url"], data=body,
+                      headers={"X-Auth-Secret": cfg["secret"],
+                               "Content-Type": "application/json; charset=utf-8"},
+                      timeout=60)
+    r.raise_for_status()
+    data = r.json() if "json" in (r.headers.get("Content-Type") or "") else {}
+    if not data.get("ok"):
+        raise RuntimeError("endpoint پاسخ ناموفق: " + str(data)[:300])
+    return data

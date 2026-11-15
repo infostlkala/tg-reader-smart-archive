@@ -1065,6 +1065,7 @@ def _group_products_job(channel: str) -> tuple:
                               f"{str(vis.get('title'))[:50]}", flush=True)
                     except Exception as ve:
                         print(f"[group] vision '{folder}': {str(ve)[:100]}", flush=True)
+            payloads = []
             for m in members:
                 m["product_folder"] = folder
                 if meta and m is not cap and not (m.get("text") or "").strip():
@@ -1076,17 +1077,17 @@ def _group_products_job(channel: str) -> tuple:
                         m["tags"] = meta["tags"]
                 # product_folder + مسیرهای نهایی باید در store هم ثبت شوند
                 store.upsert_messages(channel, [m])
-                try:
-                    payload = {k: m.get(k) for k in (
-                        "id", "channel", "date", "title", "description", "category",
-                        "tags", "text", "views", "forwards", "has_media",
-                        "media_group", "media_name", "media_path", "media_url",
-                        "media_mime", "link", "ai_status", "product_folder")}
-                    payload["id"] = str(payload.get("id"))
-                    payload["channel"] = channel
-                    publisher.post_metadata(payload, pub_cfg)
-                except Exception as pe:
-                    print(f"[group] metadata {m.get('id')}: {str(pe)[:120]}", flush=True)
+                payloads.append({k: m.get(k) for k in (
+                    "id", "channel", "date", "title", "description", "category",
+                    "tags", "text", "views", "forwards", "has_media",
+                    "media_group", "media_name", "media_path", "media_url",
+                    "media_mime", "link", "ai_status", "product_folder") } | {
+                    "id": str(m.get("id")), "channel": channel})
+            # یک درخواست batch برای کل گروه — بسیار سریع‌تر از POST تک‌تک
+            try:
+                publisher.post_metadata_batch(payloads, pub_cfg)
+            except Exception as pe:
+                print(f"[group] batch metadata '{folder}': {str(pe)[:120]}", flush=True)
             grouped_done += 1
             print(f"[group] product '{folder}': {moved} media", flush=True)
         except Exception as ge:
