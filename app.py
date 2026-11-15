@@ -699,6 +699,36 @@ def admin_storage_debug():
     return jsonify(out)
 
 
+@app.route("/admin/media-selftest")
+def admin_media_selftest():
+    """تست دسترسی‌پذیری رسانه‌ها: تا ۲۰ URL تصادفی از store با HTTP HEAD/GET
+    چک می‌شود (از داخل Railway — نماینده کاربر اینترنتی)."""
+    r = require_admin()
+    if r:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    import random
+    import requests as _rq
+    msgs = [m for m in store.get_messages("morozprintm", 10**9) if m.get("media_url")]
+    sample = random.sample(msgs, min(20, len(msgs)))
+    results = []
+    ok = 0
+    for m in sample:
+        url = m["media_url"]
+        try:
+            rr = _rq.get(url, timeout=25, stream=True,
+                         headers={"User-Agent": "Mozilla/5.0"})
+            status = rr.status_code
+            rr.close()
+        except Exception as e:
+            status = str(e)[:60]
+        good = status == 200
+        ok += 1 if good else 0
+        results.append({"id": m["id"], "folder": m.get("product_folder"),
+                        "status": status, "url": url[:110]})
+    return jsonify({"total_media": len(msgs), "sampled": len(sample),
+                    "ok": ok, "fail": len(sample) - ok, "results": results})
+
+
 @app.route("/admin/repair-media", methods=["POST"])
 def admin_repair_media():
     """بازیابی رسانه‌های گم‌شده از تلگرام: پیام‌هایی که media_path ثبت شده ولی
