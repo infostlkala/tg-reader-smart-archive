@@ -768,31 +768,33 @@ def admin_harvest():
             total_products = sum(
                 1 for m in store.get_messages(channel, 10**9)
                 if m.get("product_folder") and products.is_file_post(m))
-            offset = 0
+            # برداشت از قدیمی‌ترین پیامِ موجود در store به سمت قدیمی‌تر
+            all_msgs = store.get_messages(channel, 10**9)
+            offset = min((int(m["id"]) for m in all_msgs), default=0)
             rounds = 0
             while total_products < target and rounds < 40:
                 rounds += 1
                 print(f"[harvest] round {rounds}: products={total_products}/{target} "
                       f"offset={offset}", flush=True)
+                prev_msgs = store.get_messages(channel, 10**9)
+                prev_ids = {int(m["id"]) for m in prev_msgs}
                 res = do_fetch(channel, offset_id=offset, fetch_limit=60)
                 if not res.get("ok"):
                     raise RuntimeError(res.get("error", "fetch خطا"))
-                new_msgs = store.get_messages(channel, 10**9)
-                oldest = min((int(m["id"]) for m in new_msgs), default=0)
-                prev_count = len(store.get_messages(channel, 10**9))
-                # گروه‌بندی: فقط خوشه‌های بدون product_folder
+                # گروه‌بندی خوشه‌های جدید
                 grouped, _, _ = _group_products_job(channel)
                 total_products = sum(
                     1 for m in store.get_messages(channel, 10**9)
                     if m.get("product_folder") and products.is_file_post(m))
                 msgs_now = store.get_messages(channel, 10**9)
                 new_oldest = min((int(m["id"]) for m in msgs_now), default=0)
-                if new_oldest == oldest and len(msgs_now) == prev_count:
-                    # هیچ پیام جدیدی نیامد = به ابتدای کانال رسیدیم
+                new_ids = {int(m["id"]) for m in msgs_now}
+                if new_ids == prev_ids or new_oldest >= offset and offset != 0:
+                    # هیچ پیام قدیمی‌تری نیامد = به ابتدای کانال رسیدیم
                     print(f"[harvest] reached channel start at round {rounds}",
                           flush=True)
                     break
-                offset = new_oldest  # ادامه از قدیمی‌ترین پیام فعلی
+                offset = new_oldest
             with _job_lock:
                 _job_state = {"running": False, "channel": channel, "started": 0,
                               "result": {"ok": True, "products": total_products,
