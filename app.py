@@ -983,6 +983,67 @@ def _group_products_job(channel: str) -> tuple:
     return grouped_done, no_media, failed
 
 
+def _move_media_to_product(channel: str, folder: str, members: list,
+                           pub_cfg: dict) -> int:
+    # انتقال رسانه‌های گروه به پوشه محصول روی هاست + به‌روزرسانی store
+    base = pub_cfg["ftp_remote_dir"] or ""
+    if base:
+        base = base.rstrip("/") + "/"
+    moved = 0
+    for m in members:
+        old_rel = m.get("media_path") or ""
+        old_url = m.get("media_url") or ""
+        if not old_rel or not old_url:
+            continue
+        new_rel = f"{channel}/{folder}/{os.path.basename(old_rel)}"
+        if old_rel == new_rel:
+            moved += 1
+            continue
+        old_ftp = base + old_rel
+        new_ftp = base + new_rel
+        try:
+            import ftplib
+            ftp = publisher._ftp_connect(pub_cfg)
+            try:
+                ftp.size(new_ftp)
+                in_new = True
+            except Exception:
+                in_new = False
+            if in_new:
+                try:
+                    ftp.delete(old_ftp)
+                except Exception:
+                    pass
+            else:
+                import tempfile as _tf
+                fd, tmp = _tf.mkstemp()
+                os.close(fd)
+                with open(tmp, "wb") as f:
+                    ftp.retrbinary("RETR " + old_ftp, f.write, blocksize=1024 * 256)
+                publisher.ftp_upload(tmp, base + f"{channel}/{folder}",
+                                     os.path.basename(old_rel), pub_cfg)
+                os.remove(tmp)
+                try:
+                    ftp.delete(old_ftp)
+                except Exception:
+                    pass
+            try:
+                ftp.quit()
+            except Exception:
+                ftp.close()
+            m["media_path"] = new_rel
+            m["media_url"] = pub_cfg["media_base_url"] + "/" + new_rel
+            store.upsert_messages(channel, [m])
+            moved += 1
+        except Exception as me:
+            print(f"[group] move {old_rel}: {str(me)[:120]}", flush=True)
+            try:
+                ftp.quit()
+            except Exception:
+                pass
+    return moved
+
+
 @app.route("/admin/migrate-media", methods=["POST"])
 def admin_migrate_media():
     """مهاجرت رسانه‌های ذخیره‌شده روی ولوم Railway به هاست cPanel با ساختار per-post:
