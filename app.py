@@ -163,8 +163,9 @@ def _auto_group_new(channel: str, new_msgs: list) -> int:
         return 0
 
 
-def do_fetch(channel: str) -> dict:
+def do_fetch(channel: str, full_history: bool = False) -> dict:
     """یک بار دریافت پیام‌های جدید یک کانال و ذخیره (افزایشی، بر اساس min_id).
+    full_history=True → از اول کانال (min_id=0) دریافت می‌شود.
     اگر انتشار (endpoint/FTP) تنظیم شده باشد، هر پیام به cPanel منتشر می‌شود و
     فایل رسانه از تمپ حذف می‌شود؛ در غیر این صورت مثل قبل محلی نگه داشته می‌شود."""
     s = store.get_settings()
@@ -187,7 +188,7 @@ def do_fetch(channel: str) -> dict:
             res = tg_client.fetch_messages(
                 api_id, api_hash, sess, channel,
                 limit=s.get("history_limit", 100),
-                min_id=store.latest_id(channel) or 0,
+                min_id=0 if full_history else (store.latest_id(channel) or 0),
                 media_root=media_root)
             if not res.get("ok"):
                 return {"ok": False, "new": 0, "error": res.get("error", "خطای ناشناخته")}
@@ -577,13 +578,13 @@ _job_lock = threading.Lock()
 _job_state = {"running": False, "channel": "", "result": None, "started": 0.0}
 
 
-def _run_fetch_job(channel: str):
+def _run_fetch_job(channel: str, full_history: bool = False):
     """اجرای دریافت در thread جدا؛ نتیجه در _job_state ذخیره می‌شود.
     دلیل: دریافت تاریخچه + دانلود رسانه + انتشار FTP ممکن است دقیقه‌ها طول
     بکشد و درون درخواست HTTP باعث timeout گنجورکورن می‌شود."""
     global _job_state
     try:
-        res = do_fetch(channel)
+        res = do_fetch(channel, full_history=full_history)
     except Exception as e:
         res = {"ok": False, "new": 0, "error": str(e)}
     with _job_lock:
@@ -598,12 +599,13 @@ def admin_fetch():
         return r
     global _job_state
     channel = request.form.get("channel", "").strip().lstrip("@")
+    full = request.form.get("full") == "1"
     with _job_lock:
         if _job_state.get("running"):
             return redirect(url_for("admin", result="fetch_err=یک دریافت در حال اجراست؛ کمی صبر کنید."))
         _job_state = {"running": True, "channel": channel, "result": None,
                       "started": time.time()}
-    threading.Thread(target=_run_fetch_job, args=(channel,), daemon=True).start()
+    threading.Thread(target=_run_fetch_job, args=(channel, full), daemon=True).start()
     flash(f"دریافت @{channel} در پس‌زمینه شروع شد؛ نتیجه را از دکمه «وضعیت کار» ببینید.")
     return redirect(url_for("admin"))
 
