@@ -729,6 +729,42 @@ def admin_media_selftest():
                     "ok": ok, "fail": len(sample) - ok, "results": results})
 
 
+@app.route("/admin/sync-media-paths", methods=["POST"])
+def admin_sync_media_paths():
+    """همگام‌سازی یک‌جا: برای هر پیام دارای product_folder، اگر media_url
+    به پوشه محصول (AI) اشاره نمی‌کند، مسیر درست را در store بنویس.
+    فایل باید از قبل در پوشه AI موجود باشد (بعد از grouping اجرا شود)."""
+    r = require_admin()
+    if r:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    pub_cfg = publisher.publish_config()
+    base = pub_cfg["ftp_remote_dir"] or ""
+    if base:
+        base = base.rstrip("/") + "/"
+    channel = request.json.get("channel", "morozprintm") if request.is_json else "morozprintm"
+    fixed, skipped_no_url, missing_file = 0, 0, 0
+    msgs = store.get_messages(channel, 10**9)
+    for m in msgs:
+        folder = m.get("product_folder")
+        url = m.get("media_url") or ""
+        if not folder or not url:
+            if m.get("has_media"):
+                skipped_no_url += 1
+            continue
+        marker = f"tg-media{('/' + base) if base else ''}{channel}/"
+        if marker in url:
+            continue  # از قبل درست
+        fname = os.path.basename(url.split("?")[0])
+        new_rel = f"{channel}/{folder}/{fname}"
+        new_url = (pub_cfg["media_base_url"] + "/" if pub_cfg["media_base_url"] else "") + new_rel
+        m["media_path"] = new_rel
+        m["media_url"] = new_url
+        store.upsert_messages(channel, [m])
+        fixed += 1
+    return jsonify({"ok": True, "fixed": fixed, "skipped_no_url": skipped_no_url,
+                    "total": len(msgs)})
+
+
 @app.route("/admin/repair-media", methods=["POST"])
 def admin_repair_media():
     """بازیابی رسانه‌های گم‌شده از تلگرام: پیام‌هایی که media_path ثبت شده ولی
