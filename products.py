@@ -130,8 +130,14 @@ def split_batch_with_ai(batch: list, base_url: str, api_key: str, model: str,
             entry["caption"] = (m.get("text") or "")[:500]
         payload.append(entry)
     prompt = MATCH_PROMPT.replace("{payload}", json.dumps(payload, ensure_ascii=False))
-    data = _call_ai(prompt, base_url, api_key, model,
-                    fallback_models or ["gpt-5.4-mini", "claude-haiku-5-5"])
+    try:
+        data = _call_ai(prompt, base_url, api_key, model,
+                        fallback_models or ["gpt-5.4-mini", "claude-haiku-5-5"])
+    except Exception as ai_err:
+        # AI در دسترس نیست: هر فایل یک گروه با نام فایل + رسانه‌های بین فایل‌ها
+        print(f"[ai-split] AI unavailable ({str(ai_err)[:60]}) → filename fallback",
+              flush=True)
+        return _filename_fallback_groups(batch)
     byid = {int(m["id"]): m for m in batch}
     used = set()
     groups = []
@@ -165,6 +171,30 @@ def split_batch_with_ai(batch: list, base_url: str, api_key: str, model: str,
             groups.append({"caption": m if has_caption(m) else None,
                            "members": [m], "folder_name": slug,
                            "ai_used": False})
+    return groups
+
+
+def _filename_fallback_groups(batch: list) -> list:
+    """بدون AI: فایل‌ها مرز هستند — رسانه‌های بین دو فایل به فایل قدیمی‌تر
+    می‌چسبند (الگوی کانال: کپشن و رسانه‌ها قبل/هم‌زمان فایل خودشان)."""
+    groups = []
+    cur_members = []
+    cur_slug = None
+    for m in batch:  # جدید → قدیم
+        if is_file_post(m):
+            # فایل جدید: گروه قبلی (رسانه‌های جلویش) را ببند
+            stem = (m.get("media_name") or m.get("media_mime") or "").rsplit(".", 1)[0]
+            slug = _slug(stem, f"product-{m['id']}")
+            if cur_members:
+                groups.append({"caption": None, "members": cur_members,
+                               "folder_name": cur_slug or slug, "ai_used": False})
+            cur_members = [m]
+            cur_slug = slug
+        else:
+            cur_members.append(m)
+    if cur_members:
+        groups.append({"caption": None, "members": cur_members,
+                       "folder_name": cur_slug or "media", "ai_used": False})
     return groups
 
 
