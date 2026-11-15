@@ -964,7 +964,11 @@ def _group_products_job(channel: str) -> tuple:
                     try:
                         import requests as _rq
                         img_r = _rq.get(cover["media_url"], timeout=30,
-                                        headers={"User-Agent": "Mozilla/5.0"})
+                                        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                                                 "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                                                 "Chrome/124.0 Safari/537.36",
+                                                 "Accept": "*/*",
+                                                 "Referer": "https://stlkala.com/"})
                         img_r.raise_for_status()
                         vis = products.ai_vision_describe(
                             img_r.content, "image/jpeg",
