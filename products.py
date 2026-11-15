@@ -54,6 +54,30 @@ def slug_from_caption(caption: str, fallback: str) -> str:
     return _slug(cleaned, fallback)
 
 
+def zip_boundary_groups(msgs: list) -> list:
+    """قاعده طلایی کاربر (تأییدشده روی ۱۴۶ پیام):
+    «از هر فایل zip تا فایل zip قبلی = همه رسانه‌ها متعلق به یک محصول».
+    msgs مرتب جدید→قدیم. هر zip/stl شروع گروه است و رسانه‌های بین آن و
+    zip بعدی (قدیمی‌تر) اعضای همان محصول‌اند.
+    خروجی: [{zip: msg|None, members: [msg...]}] به ترتیب جدید→قدیم."""
+    groups = []
+    cur = None
+    for m in msgs:
+        if not m.get("has_media"):
+            continue
+        if is_file_post(m):
+            if cur:
+                groups.append(cur)
+            cur = {"zip": m, "members": [m]}
+        else:
+            if cur is None:
+                cur = {"zip": None, "members": []}
+            cur["members"].append(m)
+    if cur:
+        groups.append(cur)
+    return groups
+
+
 def time_batches(msgs: list, gap_seconds: float = 120) -> list:
     """مرحله ۱: خوشه زمانی. msgs مرتب جدید→قدیم.
     خروجی: بسته‌ها به ترتیب جدید→قدیم، هر بسته خودش مرتب جدید→قدیم."""

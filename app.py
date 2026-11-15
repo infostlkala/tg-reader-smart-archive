@@ -897,141 +897,90 @@ def admin_group_products():
 
 
 def _group_products_job(channel: str) -> tuple:
-    """گروه‌بندی v5 (دو مرحله‌ای): ۱) خوشه زمانی gap>2min = مرز بسته ارسال.
-    ۲) نام‌گذاری بسته: تک‌محصولی مستقیم، چندمحصولی با AI matching.
-    خروجی: (محصول ساخته‌شده، بدون‌رسانه، خطا)."""
+    # گروه‌بندی zip-محور (قاعده کاربر): از هر zip تا zip قبلی = یک محصول
     pub_cfg = publisher.publish_config()
     if not publisher.publish_enabled(pub_cfg):
         raise RuntimeError("PUBLISH_ENDPOINT_URL/PUBLISH_SECRET ست نشده است.")
     ai_ready = bool(AI_API_BASE_URL and AI_API_KEY and AI_MODEL)
     msgs = store.get_messages(channel, 10**9)
     media_msgs = [m for m in msgs if m.get("has_media") and m.get("media_url")]
-    batches = products.time_batches(media_msgs)
-    print(f"[group] @{channel}: {len(batches)} time batch(es), "
-          f"ai={'ready' if ai_ready else 'OFF (caption slug)'}", flush=True)
+    zgroups = products.zip_boundary_groups(media_msgs)
+    print(f"[group] @{channel}: {len(zgroups)} zip-boundary group(s), "
+          f"ai={'ready' if ai_ready else 'OFF'}", flush=True)
     grouped_done = no_media = failed = 0
     seen_folders = {}
-    for batch in batches:
+    for zg in zgroups:
         try:
-            members_with_url = [m for m in batch if m.get("media_url")]
-            if not members_with_url:
+            members = [m for m in zg["members"] if m.get("media_url")]
+            if not members:
                 no_media += 1
                 continue
-            groups = products.name_batch(members_with_url,
-                                         AI_API_BASE_URL if ai_ready else "",
-                                         AI_API_KEY if ai_ready else "",
-                                         AI_MODEL if ai_ready else "")
-            for g in groups:
-                folder = g["folder_name"]
-                if folder in seen_folders:
-                    seen_folders[folder] += 1
-                    folder = f"{folder}-{seen_folders[folder]}"
-                else:
-                    seen_folders[folder] = 1
-                _apply_product_cluster(channel, folder, g, pub_cfg)
-                grouped_done += 1
-                print(f"[group] محصول '{folder}' ({len(g['members'])} رسانه، "
-                      f"ai={'بله' if g.get('ai_used') else 'خیر'})", flush=True)
+            z = zg.get("zip")
+            zip_name = (z.get("media_name") or "") if z else ""
+            cap = next((m for m in members if (m.get("text") or "").strip()), None)
+            if zip_name:
+                fallback_slug = products._slug(
+                    os.path.splitext(zip_name)[0],
+                    products.slug_from_caption(
+                        (cap.get("text") or "") if cap else "",
+                        f"product-{members[0]['id']}"))
+            else:
+                fallback_slug = products.slug_from_caption(
+                    (cap.get("text") or "") if cap else "",
+                    f"product-{members[0]['id']}")
+            folder = fallback_slug
+            meta = None
+            if ai_ready and cap is not None:
+                try:
+                    meta = products._call_ai(
+                        "Caption of a 3D-printing product post (Russian/Persian). "
+                        "Return ONLY valid JSON: {\"folder_name\": \"english-slug\", "
+                        "\"title\": \"Persian title\", \"description\": \"Persian desc\", "
+                        "\"tags\": [\"Persian tags\"]}. Caption: "
+                        + json.dumps({"caption": (cap.get("text") or "")[:500],
+                                      "filename": zip_name or None},
+                                     ensure_ascii=False),
+                        AI_API_BASE_URL, AI_API_KEY, AI_MODEL,
+                        ["gpt-5.4-mini", "claude-haiku-5-5"])
+                    folder = products._slug(str(meta.get("folder_name") or ""),
+                                            fallback_slug)
+                    print(f"[group] zip#{z['id'] if z else '-'}: AI -> '{folder}'",
+                          flush=True)
+                except Exception as ai_err:
+                    print(f"[group] zip#{z['id'] if z else '-'}: AI err "
+                          f"({str(ai_err)[:60]}) -> file slug: '{folder}'", flush=True)
+            if folder in seen_folders:
+                seen_folders[folder] += 1
+                folder = f"{folder}-{seen_folders[folder]}"
+            else:
+                seen_folders[folder] = 1
+            moved = _move_media_to_product(channel, folder, members, pub_cfg)
+            for m in members:
+                m["product_folder"] = folder
+                if meta and m is not cap and not (m.get("text") or "").strip():
+                    if meta.get("title") and (not m.get("title") or m.get("ai_status") == "fallback"):
+                        m["title"] = meta["title"]
+                    if meta.get("description") and not m.get("description"):
+                        m["description"] = meta["description"]
+                    if meta.get("tags"):
+                        m["tags"] = meta["tags"]
+                try:
+                    payload = {k: m.get(k) for k in (
+                        "id", "channel", "date", "title", "description", "category",
+                        "tags", "text", "views", "forwards", "has_media",
+                        "media_group", "media_name", "media_path", "media_url",
+                        "media_mime", "link", "ai_status", "product_folder")}
+                    payload["id"] = str(payload.get("id"))
+                    payload["channel"] = channel
+                    publisher.post_metadata(payload, pub_cfg)
+                except Exception as pe:
+                    print(f"[group] metadata {m.get('id')}: {str(pe)[:120]}", flush=True)
+            grouped_done += 1
+            print(f"[group] product '{folder}': {moved} media", flush=True)
         except Exception as ge:
             failed += 1
-            print(f"[group] خطا در بسته: {str(ge)[:150]}", flush=True)
+            print(f"[group] group error: {str(ge)[:150]}", flush=True)
     return grouped_done, no_media, failed
-
-
-def _apply_product_cluster(channel: str, folder: str, group: dict, pub_cfg: dict):
-    """اعمال یک گروه محصول: جابجایی/اصلاح مسیر همه اعضا + متادیتا."""
-    members = [m for m in group["members"] if m.get("media_url")]
-    cap = group.get("caption")
-    moved = _move_media_to_product(channel, folder, members, pub_cfg)
-    for m in members:
-        m["product_folder"] = folder
-        # متادیتای AI: به عضو کپشن‌دار متن اصلی؛ به بقیه عنوان/توضیح مشترک
-        if group.get("ai_used") and m is not cap:
-            if not (m.get("text") or "").strip():
-                if group.get("title"):
-                    m["title"] = group["title"]
-                if group.get("description"):
-                    m["description"] = group["description"]
-                if group.get("tags"):
-                    m["tags"] = group["tags"]
-        if group.get("category") and not m.get("category"):
-            m["category"] = group["category"]
-        try:
-            payload = {k: m.get(k) for k in (
-                "id", "channel", "date", "title", "description", "category",
-                "tags", "text", "views", "forwards", "has_media",
-                "media_group", "media_name", "media_path", "media_url",
-                "media_mime", "link", "ai_status", "product_folder")}
-            payload["id"] = str(payload.get("id"))
-            payload["channel"] = channel
-            publisher.post_metadata(payload, pub_cfg)
-        except Exception as pe:
-            print(f"[group] metadata {m.get('id')}: {str(pe)[:120]}", flush=True)
-    print(f"[group] محصول '{folder}': {moved} رسانه منتقل/اصلاح شد", flush=True)
-
-
-def _move_media_to_product(channel: str, folder: str, members: list,
-                           pub_cfg: dict) -> int:
-    """انتقال رسانه‌های خوشه به پوشه محصول روی هاست + به‌روزرسانی store.
-    اگر فایل از قبل در پوشه مقصد هست، فقط مسیر store اصلاح و نسخه قدیمی حذف می‌شود."""
-    base = pub_cfg["ftp_remote_dir"] or ""
-    if base:
-        base = base.rstrip("/") + "/"
-    moved = 0
-    for m in members:
-        old_rel = m.get("media_path") or ""
-        old_url = m.get("media_url") or ""
-        if not old_rel or not old_url:
-            continue
-        new_rel = f"{channel}/{folder}/{os.path.basename(old_rel)}"
-        if old_rel == new_rel:
-            moved += 1
-            continue
-        old_ftp = base + old_rel
-        new_ftp = base + new_rel
-        try:
-            import ftplib
-            ftp = publisher._ftp_connect(pub_cfg)
-            try:
-                ftp.size(new_ftp)
-                in_new = True
-            except Exception:
-                in_new = False
-            if in_new:
-                # نسخه قدیمی حذف، مسیر اصلاح
-                try:
-                    ftp.delete(old_ftp)
-                except Exception:
-                    pass
-            else:
-                # جابجایی واقعی: دانلود→آپلود→حذف
-                import tempfile as _tf
-                fd, tmp = _tf.mkstemp()
-                os.close(fd)
-                with open(tmp, "wb") as f:
-                    ftp.retrbinary("RETR " + old_ftp, f.write, blocksize=1024 * 256)
-                publisher.ftp_upload(tmp, base + f"{channel}/{folder}",
-                                     os.path.basename(old_rel), pub_cfg)
-                os.remove(tmp)
-                try:
-                    ftp.delete(old_ftp)
-                except Exception:
-                    pass
-            try:
-                ftp.quit()
-            except Exception:
-                ftp.close()
-            m["media_path"] = new_rel
-            m["media_url"] = pub_cfg["media_base_url"] + "/" + new_rel
-            store.upsert_messages(channel, [m])
-            moved += 1
-        except Exception as me:
-            print(f"[group] move {old_rel}: {str(me)[:120]}", flush=True)
-            try:
-                ftp.quit()
-            except Exception:
-                pass
-    return moved
 
 
 @app.route("/admin/migrate-media", methods=["POST"])
