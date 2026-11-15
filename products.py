@@ -1,154 +1,209 @@
-"""گروه‌بندی هوشمند پست‌های یک محصول (الگوی کانال‌های مدل سه‌بعدی):
-   پست/آلبومِ عکس‌های محصول → پستِ فایل دانلودی (zip/stl/3mf) زیرِ آن.
+"""گروه‌بندی محصولات کانال — الگوریتم v5 (دو مرحله‌ای، مبتنی بر تحلیل داده).
+
+الگوی واقعی کانال (۱۴۶ پیام تحلیل شد):
+- هر محصول در یک «بسته ارسال» پست می‌شود: کپشن معرفی (ویدئو/عکس) + عکس‌های
+  آلبوم + فایل zip/stl — همه هم‌ثانیه یا فاصله چند ثانیه (p90 gap = 1 دقیقه).
+- گاهی چند محصول پشت‌سرهم در یک بسته ارسال می‌شوند (gap=0 بین‌شان).
+- فایل‌های دورهای اولیه media_name ندارند؛ mime=application/zip.
 
 الگوریتم:
- ۱) کاندید‌یابی قاعده‌مند: پست‌های متوالی جدید→قدیم؛ هر پستِ «فایل‌دار» همه
-    پست‌های رسانه‌ای «بدون فایل» پیش از خودش (تا شکاف زمانی max_gap) را
-    به‌عنوان عکس‌های همان محصول می‌گیرد.
- ۲) تأیید AI: متن پست‌ها + نام فایل به مدل داده می‌شود؛ مدل می‌گوید این
-    مجموعه یک محصول واحد است یا نه و نام انگلیسی تمیز برای پوشه می‌سازد.
- ۳) خروجی: گروه‌های تأییدشده با شناسه پست فایل + شناسه پست‌های عکس.
+ مرحله ۱ (قطعی، محاسباتی): خوشه زمانی با gap > GAP_SECONDS بین پست‌های
+   متوالی = مرز بسته.
+ مرحله ۲ (AI، فقط در صورت نیاز): اگر بسته بیش از یک کپشن یا بیش از یک فایل
+   دارد، AI کپشن‌ها را به فایل‌ها می‌چسباند (matching) و نام پوشه می‌سازد.
+   بسته‌های تک‌محصولی مستقیم نام‌گذاری می‌شوند.
 """
 import json
 import re
+from datetime import datetime
 
-import requests
+FILE_EXTS = (".zip", ".rar", ".7z", ".stl", ".3mf", ".obj", ".step", ".stp",
+             ".gcode", ".amf", ".ply")
+ZIP_MIMES = ("application/zip", "application/x-rar-compressed",
+             "application/x-7z-compressed")
 
-# پست‌های فایل‌دار: پسوندهای مدل سه‌بعدی/آرشیو
-FILE_EXTS = {".zip", ".rar", ".7z", ".stl", ".3mf", ".obj", ".step", ".stp",
-             ".gcode", ".amf", ".ply"}
 
-
-def _file_post(m: dict) -> bool:
+def is_file_post(m: dict) -> bool:
     name = (m.get("media_name") or "").lower()
-    return bool(name) and any(name.endswith(e) for e in FILE_EXTS)
+    if any(name.endswith(e) for e in FILE_EXTS):
+        return True
+    return (m.get("media_mime") or "").lower() in ZIP_MIMES
 
 
-def _photo_post(m: dict) -> bool:
-    return m.get("has_media") == "photo" and not _file_post(m)
+def has_caption(m: dict) -> bool:
+    return len((m.get("text") or "").strip()) >= 10
+
+
+def _dt(m: dict):
+    try:
+        return datetime.fromisoformat((m.get("date") or "").replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def _slug(text: str, fallback: str) -> str:
-    """نام پوشه انگلیسی امن: حروف/عدد/خط تیره، حداکثر ۶۰ کاراکتر."""
     text = text.lower()
     text = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
     text = re.sub(r"-{2,}", "-", text)[:60].strip("-")
     return text or fallback
 
 
-def candidate_groups(msgs: list, max_gap_hours: float = 48, max_members: int = 12) -> list:
-    """msgs: پیام‌های رسانه‌دار یک کانال، مرتب جدید→قدیم (خروجی store).
-    الگوی واقعی کانال: ویدئو/آلبومِ معرفی (کپشن شامل نام محصول) و بلافاصله
-    بعدِ آن (زمانی) پست فایل zip/stl. یعنی در لیست جدید→قدیم، همراهانِ فایل
-    «توده پیوسته رسانه غیرفایل» بلافاصله بعدِ آن هستند (قدیمی‌تر از فایل)،
-    تا رسیدن به پست فایل بعدی.
-    خروجی: [{file: msg, photos: [msg, ...]}] — photos = رسانه‌های همراه."""
-    msgs = [m for m in msgs if m.get("has_media")]
-    groups = []
-    from datetime import datetime
-    def dt(m):
-        try:
-            return datetime.fromisoformat((m.get("date") or "").replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    i = 0
-    n = len(msgs)
-    while i < n:
-        m = msgs[i]
-        if not _file_post(m):
-            i += 1
-            continue
-        # توده پیوسته رسانه غیرفایل بلافاصله قدیمی‌تر از این فایل
-        companions = []
-        j = i + 1
-        d = dt(m)
-        while j < n and not _file_post(msgs[j]):
-            p = msgs[j]
-            dp = dt(p)
-            if d and dp and (d - dp).total_seconds() > max_gap_hours * 3600:
-                break
-            companions.append(p)
-            j += 1
-            if len(companions) >= max_members:
-                break
-        groups.append({"file": m, "photos": companions})
-        i = j  # ادامه از بعدِ توده
-    return groups
+def slug_from_caption(caption: str, fallback: str) -> str:
+    first_line = caption.strip().splitlines()[0] if caption.strip() else ""
+    cleaned = re.sub(r"[^\w\s-]", "", first_line, flags=re.UNICODE)
+    return _slug(cleaned, fallback)
 
 
-def context_texts(msgs: list, file_id: str, window: int = 2) -> dict:
-    """متن پست‌های متنیِ نزدیک (هر نوع، شامل متن‌دار) در پنجره id —
-    چون متن محصول معمولاً روی پست ویدئویی/عکسیِ کنار فایل است."""
-    out = {}
-    ordered = sorted(msgs, key=lambda m: int(m["id"]), reverse=True)
-    idx = next((i for i, m in enumerate(ordered) if str(m["id"]) == str(file_id)), None)
-    if idx is None:
-        return out
-    for m in ordered[max(0, idx - window): idx + window + 1]:
-        t = (m.get("text") or "").strip()
-        if t and str(m["id"]) != str(file_id):
-            out[str(m["id"])] = t[:300]
-    return out
+def time_batches(msgs: list, gap_seconds: float = 120) -> list:
+    """مرحله ۱: خوشه زمانی. msgs مرتب جدید→قدیم.
+    خروجی: بسته‌ها به ترتیب جدید→قدیم، هر بسته خودش مرتب جدید→قدیم."""
+    batches = []
+    cur = []
+    prev = None
+    for m in msgs:
+        d = _dt(m)
+        if prev is not None and d and prev:
+            if (prev - d).total_seconds() > gap_seconds:
+                batches.append(cur)
+                cur = []
+        cur.append(m)
+        prev = d
+    if cur:
+        batches.append(cur)
+    return batches
 
 
-AI_PROMPT = (
-    "You group Telegram posts of a 3D-printing channel into products. "
-    "The channel's pattern: a video/photo post introducing the product "
-    "(with the product name in its caption) followed immediately by the "
-    "file post (zip/stl) of that same product. Given the file post's "
-    "filename and the nearby post captions below, decide if these posts "
-    "belong to ONE product. Return ONLY valid JSON with keys: "
-    '"is_same_product" (bool), "folder_name" (short English slug like '
-    '"gyro-cup-stroller" — no spaces, lowercase, hyphens), '
-    '"confidence" (0-1). Posts JSON:\n{payload}\n'
+MATCH_PROMPT = (
+    "A Telegram 3D-printing channel posted this batch: several caption posts "
+    "(product intros, may include non-product announcements like giveaways) "
+    "and several file posts (zip/stl). Match each file to its product caption "
+    "by name similarity. Announcements with no matching file become their own "
+    "group. Return ONLY valid JSON: {\"groups\": [{\"caption_id\": int|null, "
+    "\"caption_text\": str, \"file_ids\": [int], \"folder_name\": \"english-slug\", "
+    "\"title\": \"عنوان فارسی\", \"description\": \"توضیح فارسی کوتاه\", "
+    "\"tags\": [\"تگ\"], \"category\": \"مدل سه‌بعدی|تصویر|ویدئو|سند|آرشیو|سایر\"}]}. "
+    "Every file id and every caption id must appear exactly once. Batch JSON:\n{payload}\n"
 )
 
 
-def ai_confirm(group: dict, base_url: str, api_key: str, model: str,
-               all_msgs: list | None = None) -> dict:
-    """پرسش از مدل سازگار با OpenAI: این مجموعه یک محصول است؟ نام پوشه؟
-    all_msgs برای گرفتن متن پست‌های متنی مجاور فایل (ویدئوی معرفی و...)."""
-    payload = []
-    for p in group["photos"]:
-        payload.append({"type": p.get("has_media") or "media", "id": p["id"],
-                        "text": (p.get("text") or "")[:300]})
-    f = group["file"]
-    payload.append({"type": "file", "id": f["id"],
-                    "filename": f.get("media_name"),
-                    "text": (f.get("text") or "")[:300]})
-    if all_msgs:
-        for mid, txt in context_texts(all_msgs, f["id"]).items():
-            payload.append({"type": "caption-nearby", "id": mid, "text": txt})
-    prompt = AI_PROMPT.format(payload=json.dumps(payload, ensure_ascii=False))
-    models = [model, "gpt-5.4-mini", "claude-haiku-5-5"]
-    seen = set()
+def _call_ai(prompt: str, base_url: str, api_key: str, model: str,
+             fallback_models: list) -> dict:
+    import requests
     last_err = None
-    for m in models:
-        if m in seen or not m:
+    for mdl in [model] + [m for m in fallback_models if m != model]:
+        if not mdl:
             continue
-        seen.add(m)
         try:
             r = requests.post(base_url.rstrip("/") + "/chat/completions",
                               headers={"Authorization": "Bearer " + api_key,
                                        "Content-Type": "application/json"},
-                              json={"model": m, "temperature": 0.1,
+                              json={"model": mdl, "temperature": 0.1,
                                     "messages": [{"role": "system",
                                                   "content": "Return only valid JSON."},
                                                  {"role": "user", "content": prompt}]},
-                              timeout=60)
+                              timeout=90)
             r.raise_for_status()
             content = r.json()["choices"][0]["message"]["content"].strip()
             if content.startswith("```"):
                 content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-            data = json.loads(content)
-            fallback = "product-" + str(group["file"]["id"])
-            data["folder_name"] = _slug(str(data.get("folder_name") or ""), fallback)
-            return data
+            return json.loads(content)
         except requests.HTTPError as e:
             if "404" in str(e) or "400" in str(e):
                 continue
             last_err = e
-        except (requests.Timeout, requests.ConnectionError,
-                json.JSONDecodeError, KeyError, ValueError) as e:
+        except (requests.Timeout, requests.ConnectionError, ValueError) as e:
             last_err = e
     raise last_err
+
+
+def split_batch_with_ai(batch: list, base_url: str, api_key: str, model: str,
+                        fallback_models: list | None = None) -> list:
+    """مرحله ۲: تفکیک بسته چندمحصولی با AI. خروجی: لیست گروه‌های محصول:
+    [{caption: msg|None, members: [msg...], folder_name, title, description,
+      tags, category, ai_used: True}]"""
+    payload = []
+    for m in batch:
+        entry = {"id": int(m["id"]), "type": m.get("has_media"),
+                 "is_file": is_file_post(m),
+                 "filename": m.get("media_name")}
+        if has_caption(m):
+            entry["caption"] = (m.get("text") or "")[:500]
+        payload.append(entry)
+    prompt = MATCH_PROMPT.replace("{payload}", json.dumps(payload, ensure_ascii=False))
+    data = _call_ai(prompt, base_url, api_key, model,
+                    fallback_models or ["gpt-5.4-mini", "claude-haiku-5-5"])
+    byid = {int(m["id"]): m for m in batch}
+    used = set()
+    groups = []
+    for g in data.get("groups", []):
+        members = []
+        cap = None
+        cap_id = g.get("caption_id")
+        if cap_id and int(cap_id) in byid and int(cap_id) not in used:
+            cap = byid[int(cap_id)]
+            members.append(cap)
+            used.add(int(cap_id))
+        for fid in g.get("file_ids") or []:
+            fid = int(fid)
+            if fid in byid and fid not in used:
+                members.append(byid[fid])
+                used.add(fid)
+        if not members:
+            continue
+        folder = _slug(str(g.get("folder_name") or ""),
+                       f"product-{members[0]['id']}")
+        groups.append({"caption": cap, "members": members,
+                       "folder_name": folder, "title": g.get("title"),
+                       "description": g.get("description"),
+                       "tags": g.get("tags") or [],
+                       "category": g.get("category"), "ai_used": True})
+    # رسانه‌های بی‌گروه (AI جا انداخته) → گروه جدا با slug کپشن/نام فایل
+    for m in batch:
+        if int(m["id"]) not in used:
+            slug = slug_from_caption((m.get("text") or ""),
+                                     f"product-{m['id']}")
+            groups.append({"caption": m if has_caption(m) else None,
+                           "members": [m], "folder_name": slug,
+                           "ai_used": False})
+    return groups
+
+
+def name_batch(batch: list, base_url: str, api_key: str, model: str,
+               fallback_models: list | None = None) -> list:
+    """نام‌گذاری بسته: تک‌محصولی مستقیم؛ چندمحصولی با AI split.
+    خروجی مثل split_batch_with_ai ولی ai_used ممکن است False باشد."""
+    caps = [m for m in batch if has_caption(m)]
+    files = [m for m in batch if is_file_post(m)]
+    if len(files) <= 1 and len(caps) <= 1:
+        # تک‌محصولی: نام از کپشن
+        cap = caps[0] if caps else None
+        cap_text = (cap.get("text") or "") if cap else ""
+        first_file = files[0] if files else None
+        fallback = slug_from_caption(cap_text,
+                                     f"product-{batch[0]['id']}")
+        groups = [{"caption": cap, "members": list(batch),
+                   "folder_name": fallback, "ai_used": False}]
+        if cap_text and (base_url and api_key and model):
+            try:
+                meta = _call_ai(
+                    "Caption of a 3D-printing product post (Russian/Persian). "
+                    "Return ONLY valid JSON: {\"folder_name\": \"english-slug\", "
+                    "\"title\": \"عنوان فارسی\", \"description\": \"توضیح فارسی\", "
+                    "\"tags\": [\"تگ\"], \"category\": \"...\"}. Caption:\n"
+                    + json.dumps({"caption": cap_text[:500],
+                                  "filename": first_file.get("media_name") if first_file else None},
+                                 ensure_ascii=False),
+                    base_url, api_key, model, fallback_models or
+                    ["gpt-5.4-mini", "claude-haiku-5-5"])
+                groups[0].update({
+                    "folder_name": _slug(str(meta.get("folder_name") or ""), fallback),
+                    "title": meta.get("title"),
+                    "description": meta.get("description"),
+                    "tags": meta.get("tags") or [],
+                    "category": meta.get("category"),
+                    "ai_used": True})
+            except Exception:
+                pass
+        return groups
+    # چندمحصولی → AI matching
+    return split_batch_with_ai(batch, base_url, api_key, model, fallback_models)
