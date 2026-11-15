@@ -54,6 +54,54 @@ def slug_from_caption(caption: str, fallback: str) -> str:
     return _slug(cleaned, fallback)
 
 
+VISION_PROMPT = (
+    "This image (or video frame) is a product from a 3D-printing Telegram "
+    "channel. Analyze it visually and return ONLY valid JSON: "
+    '{"title": "عنوان فارسی کوتاه و دقیق محصول", '
+    '"description": "توضیح فارسی ۱-۲ جمله‌ای از ظاهر و کاربرد محصول", '
+    '"tags": ["۳ تا ۶ تگ فارسی"]}. Only describe what you actually see.'
+)
+
+
+def ai_vision_describe(image_bytes: bytes, mime: str, base_url: str,
+                       api_key: str, model: str,
+                       fallback_models: list | None = None) -> dict:
+    """تحلیل بینایی عکس محصول: عنوان/توضیح/تگ فارسی از خود تصویر.
+    b64 data-URL می‌فرستد؛ در خطا مدل بعدی را امتحان می‌کند."""
+    import requests
+    import base64
+    b64 = base64.b64encode(image_bytes).decode()
+    data_url = f"data:{mime};base64,{b64}"
+    models = [model] + [m for m in (fallback_models or
+                                    ["gpt-5.4-mini", "claude-haiku-5-5"]) if m != model]
+    last_err = None
+    for mdl in models:
+        if not mdl:
+            continue
+        try:
+            r = requests.post(base_url.rstrip("/") + "/chat/completions",
+                              headers={"Authorization": "Bearer " + api_key,
+                                       "Content-Type": "application/json"},
+                              json={"model": mdl, "temperature": 0.2,
+                                    "messages": [{"role": "user", "content": [
+                                        {"type": "text", "text": VISION_PROMPT},
+                                        {"type": "image_url",
+                                         "image_url": {"url": data_url}}]}]},
+                              timeout=120)
+            r.raise_for_status()
+            content = r.json()["choices"][0]["message"]["content"].strip()
+            if content.startswith("```"):
+                content = content.split(chr(10), 1)[-1].rsplit(chr(96)*3, 1)[0].strip()
+            return json.loads(content)
+        except requests.HTTPError as e:
+            if "404" in str(e) or "400" in str(e):
+                continue
+            last_err = e
+        except (requests.Timeout, requests.ConnectionError, ValueError) as e:
+            last_err = e
+    raise last_err
+
+
 def zip_boundary_groups(msgs: list) -> list:
     """قاعده طلایی کاربر (تأییدشده روی ۱۴۶ پیام):
     «از هر فایل zip تا فایل zip قبلی = همه رسانه‌ها متعلق به یک محصول».

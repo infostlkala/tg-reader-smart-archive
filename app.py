@@ -955,6 +955,33 @@ def _group_products_job(channel: str) -> tuple:
             else:
                 seen_folders[folder] = 1
             moved = _move_media_to_product(channel, folder, members, pub_cfg)
+            # تحلیل بینایی: عکس کاور محصول → عنوان/توضیح/تگ فارسی از خود تصویر
+            if ai_ready:
+                cover = next((m for m in members
+                              if m.get("has_media") == "photo" and m.get("media_url")),
+                             None)
+                if cover:
+                    try:
+                        import requests as _rq
+                        img_r = _rq.get(cover["media_url"], timeout=30,
+                                        headers={"User-Agent": "Mozilla/5.0"})
+                        img_r.raise_for_status()
+                        vis = products.ai_vision_describe(
+                            img_r.content, "image/jpeg",
+                            AI_API_BASE_URL, AI_API_KEY, AI_MODEL)
+                        # فقط اعضای بدون متن، متادیتای بینایی می‌گیرند
+                        for m in members:
+                            if m is not cap and not (m.get("text") or "").strip():
+                                if vis.get("title"):
+                                    m["title"] = vis["title"]
+                                if vis.get("description"):
+                                    m["description"] = vis["description"]
+                                if vis.get("tags"):
+                                    m["tags"] = vis["tags"]
+                        print(f"[group] محصول '{folder}': vision OK — "
+                              f"{str(vis.get('title'))[:50]}", flush=True)
+                    except Exception as ve:
+                        print(f"[group] vision '{folder}': {str(ve)[:100]}", flush=True)
             for m in members:
                 m["product_folder"] = folder
                 if meta and m is not cap and not (m.get("text") or "").strip():
