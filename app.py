@@ -151,7 +151,7 @@ def _auto_group_new(channel: str, new_msgs: list) -> int:
     خروجی: تعداد محصول ساخته‌شده (۰ = کاری انجام نشد یا AI آماده نبود)."""
     if not new_msgs or not (AI_API_BASE_URL and AI_API_KEY and AI_MODEL):
         return 0
-    if not any(products._file_post(m) for m in new_msgs):
+    if not any(products.is_file_post(m) for m in new_msgs):
         return 0  # پست فایل‌دار جدیدی نیست؛ الگوی محصول تکمیل نشده
     try:
         grouped, _, _ = _group_products_job(channel)
