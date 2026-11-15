@@ -995,6 +995,8 @@ def _group_products_job(channel: str) -> tuple:
                         m["description"] = meta["description"]
                     if meta.get("tags"):
                         m["tags"] = meta["tags"]
+                # product_folder + مسیرهای نهایی باید در store هم ثبت شوند
+                store.upsert_messages(channel, [m])
                 try:
                     payload = {k: m.get(k) for k in (
                         "id", "channel", "date", "title", "description", "category",
