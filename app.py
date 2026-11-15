@@ -716,7 +716,10 @@ def admin_media_selftest():
         url = m["media_url"]
         try:
             rr = _rq.get(url, timeout=25, stream=True,
-                         headers={"User-Agent": "Mozilla/5.0"})
+                         headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                                "Chrome/124.0 Safari/537.36",
+                                  "Accept": "*/*"})
             status = rr.status_code
             rr.close()
         except Exception as e:
