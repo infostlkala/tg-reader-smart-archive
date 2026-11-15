@@ -751,8 +751,8 @@ def admin_sync_media_paths():
             if m.get("has_media"):
                 skipped_no_url += 1
             continue
-        marker = f"tg-media{('/' + base) if base else ''}{channel}/"
-        if marker in url:
+        # مسیر درست = شامل پوشه محصول؛ اگر پوشه دیگری (album/post/...) در URL است، اصلاح کن
+        if f"/{channel}/{folder}/" in url:
             continue  # از قبل درست
         fname = os.path.basename(url.split("?")[0])
         new_rel = f"{channel}/{folder}/{fname}"
