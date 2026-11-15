@@ -1033,7 +1033,9 @@ def _group_products_job(channel: str) -> tuple:
                 seen_folders[folder] = 1
             moved = _move_media_to_product(channel, folder, members, pub_cfg)
             # تحلیل بینایی: عکس کاور محصول → عنوان/توضیح/تگ فارسی از خود تصویر
-            if ai_ready:
+            # VISION_ENABLED=0 → خاموش (حالت سریع برای backfill)
+            vision_on = os.environ.get("VISION_ENABLED", "1") == "1"
+            if ai_ready and vision_on:
                 cover = next((m for m in members
                               if m.get("has_media") == "photo" and m.get("media_url")),
                              None)
