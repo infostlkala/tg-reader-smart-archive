@@ -899,12 +899,40 @@ def _move_media_to_product(channel: str, folder: str, file_msg: dict,
         if not old_rel or not old_url:
             continue
         new_rel = f"{channel}/{folder}/{os.path.basename(old_rel)}"
+        if old_rel == new_rel:
+            # از قبل در پوشه درست است؛ فقط product_folder ثبت شود
+            m["product_folder"] = folder
+            store.upsert_messages(channel, [m])
+            moved += 1
+            continue
         old_ftp = base + old_rel
         new_ftp = base + new_rel
-        # جابجایی روی هاست: دانلود→آپلود→حذف (FTPS نداریم؛ FTP ساده کافی است)
+        # اگر فایل از قبل در پوشه AI هست (مثلاً از اجرای قبلی)، فقط متادیتا اصلاح شود
         try:
             import ftplib
             ftp = publisher._ftp_connect(pub_cfg)
+            try:
+                ftp.size(new_ftp)
+                in_new = True
+            except Exception:
+                in_new = False
+            if in_new:
+                # نسخه قدیمی (post-*/album-*) اگر هست حذف شود
+                try:
+                    ftp.delete(old_ftp)
+                except Exception:
+                    pass
+                m["media_path"] = new_rel
+                m["media_url"] = pub_cfg["media_base_url"] + "/" + new_rel
+                m["product_folder"] = folder
+                store.upsert_messages(channel, [m])
+                moved += 1
+                try:
+                    ftp.quit()
+                except Exception:
+                    ftp.close()
+                continue
+            # جابجایی واقعی: دانلود→آپلود→حذف
             import tempfile as _tf
             fd, tmp = _tf.mkstemp()
             os.close(fd)
