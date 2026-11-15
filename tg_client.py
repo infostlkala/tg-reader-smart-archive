@@ -151,8 +151,10 @@ def sign_in(api_id: int, api_hash: str, session_string: str,
 
 def fetch_messages(api_id: int, api_hash: str, session_string: str,
                    channel: str, limit: int, min_id: int, media_root: str = "",
-                   only_ids: list | None = None) -> dict:
+                   only_ids: list | None = None,
+                   offset_id: int = 0) -> dict:
     """دریافت پیام‌های کانال (جدید به قدیم) بزرگ‌تر از min_id.
+    offset_id: واکشی پیام‌های قدیمی‌تر از این شناسه (برداشت افزایشی تاریخچه).
     only_ids: اگر داده شود فقط همین شناسه‌ها واکشی می‌شود (بازیابی رسانه گم‌شده)."""
     async def job(loop):
         client = _make(session_string, api_id, api_hash, loop)
@@ -170,6 +172,8 @@ def fetch_messages(api_id: int, api_hash: str, session_string: str,
                 kwargs = {"limit": int(limit) if int(limit) > 0 else None}
                 if min_id:
                     kwargs["min_id"] = int(min_id)
+                if offset_id:
+                    kwargs["offset_id"] = int(offset_id)
                 async for m in client.iter_messages(entity, **kwargs):
                     out.append(await _message_item(m, channel, media_root, client))
             return {"ok": True, "messages": out,

@@ -163,7 +163,8 @@ def _auto_group_new(channel: str, new_msgs: list) -> int:
         return 0
 
 
-def do_fetch(channel: str, full_history: bool = False) -> dict:
+def do_fetch(channel: str, full_history: bool = False,
+             offset_id: int = 0, fetch_limit: int | None = None) -> dict:
     """یک بار دریافت پیام‌های جدید یک کانال و ذخیره (افزایشی، بر اساس min_id).
     full_history=True → از اول کانال (min_id=0) دریافت می‌شود.
     اگر انتشار (endpoint/FTP) تنظیم شده باشد، هر پیام به cPanel منتشر می‌شود و
@@ -187,9 +188,10 @@ def do_fetch(channel: str, full_history: bool = False) -> dict:
                                  "سشن ورود (از بخش ورود تلگرام پایین همین صفحه) تنظیم شده باشد."}
             res = tg_client.fetch_messages(
                 api_id, api_hash, sess, channel,
-                limit=s.get("history_limit", 100),
+                limit=fetch_limit or s.get("history_limit", 100),
                 min_id=0 if full_history else (store.latest_id(channel) or 0),
-                media_root=media_root)
+                media_root=media_root,
+                offset_id=offset_id)
             if not res.get("ok"):
                 return {"ok": False, "new": 0, "error": res.get("error", "خطای ناشناخته")}
             msgs = [enrich_message(m, channel) for m in res["messages"]]
@@ -732,6 +734,77 @@ def admin_media_selftest():
                         "status": status, "url": url[:110]})
     return jsonify({"total_media": len(msgs), "sampled": len(sample),
                     "ok": ok, "fail": len(sample) - ok, "results": results})
+
+
+HARVEST_TARGET = int(os.environ.get("HARVEST_TARGET", 100))
+
+
+@app.route("/admin/harvest", methods=["POST"])
+def admin_harvest():
+    """برداشت افزایشی تاریخچه: هر دور مقداری پیام قدیمی‌تر می‌گیرد، همان
+    را گروه‌بندی/منتشر می‌کند و می‌شمارد؛ تا رسیدن به HARVEST_TARGET محصول."""
+    r = require_admin()
+    if r:
+        return r
+    global _job_state
+    channel = request.form.get("channel", "").strip().lstrip("@")
+    target = min(int(request.form.get("target", HARVEST_TARGET) or HARVEST_TARGET), 300)
+    with _job_lock:
+        if _job_state.get("running"):
+            return redirect(url_for("admin", result="fetch_err=یک کار در حال اجراست؛ کمی صبر کنید."))
+        _job_state = {"running": True, "channel": channel + " (harvest)",
+                      "result": None, "started": time.time()}
+
+    def job():
+        global _job_state
+        s = store.get_settings()
+        pub_cfg = publisher.publish_config()
+        try:
+            api_id = int(API_ID_ENV or s.get("api_id", "") or 0)
+            api_hash = API_HASH_ENV or s.get("api_hash", "")
+            sess = TG_SESSION_ENV or s.get("tg_session", "")
+            if not (api_id and api_hash and sess):
+                raise RuntimeError("سشن تلگرام ست نشده است.")
+            total_products = sum(
+                1 for m in store.get_messages(channel, 10**9)
+                if m.get("product_folder") and products.is_file_post(m))
+            offset = 0
+            rounds = 0
+            while total_products < target and rounds < 40:
+                rounds += 1
+                print(f"[harvest] round {rounds}: products={total_products}/{target} "
+                      f"offset={offset}", flush=True)
+                res = do_fetch(channel, offset_id=offset, fetch_limit=60)
+                if not res.get("ok"):
+                    raise RuntimeError(res.get("error", "fetch خطا"))
+                new_msgs = store.get_messages(channel, 10**9)
+                oldest = min((int(m["id"]) for m in new_msgs), default=0)
+                prev_count = len(store.get_messages(channel, 10**9))
+                # گروه‌بندی: فقط خوشه‌های بدون product_folder
+                grouped, _, _ = _group_products_job(channel)
+                total_products = sum(
+                    1 for m in store.get_messages(channel, 10**9)
+                    if m.get("product_folder") and products.is_file_post(m))
+                msgs_now = store.get_messages(channel, 10**9)
+                new_oldest = min((int(m["id"]) for m in msgs_now), default=0)
+                if new_oldest == oldest and len(msgs_now) == prev_count:
+                    # هیچ پیام جدیدی نیامد = به ابتدای کانال رسیدیم
+                    print(f"[harvest] reached channel start at round {rounds}",
+                          flush=True)
+                    break
+                offset = new_oldest  # ادامه از قدیمی‌ترین پیام فعلی
+            with _job_lock:
+                _job_state = {"running": False, "channel": channel, "started": 0,
+                              "result": {"ok": True, "products": total_products,
+                                         "target": target, "rounds": rounds}}
+        except Exception as he:
+            with _job_lock:
+                _job_state = {"running": False, "channel": channel, "started": 0,
+                              "result": {"ok": False, "error": str(he)[:250]}}
+
+    threading.Thread(target=job, daemon=True).start()
+    flash(f"برداشت تاریخچه تا {target} محصول شروع شد؛ پیشرفت را از «وضعیت کار» ببینید.")
+    return redirect(url_for("admin"))
 
 
 @app.route("/admin/sync-media-paths", methods=["POST"])
