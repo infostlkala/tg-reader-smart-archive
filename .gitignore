@@ -27,3 +27,4 @@ Thumbs.db
 .DS_Store
 receiver.php
 real-msgs.json
+analysis-data.json
