@@ -1,308 +1,381 @@
 {% extends "base.html" %}
 {% block title %}پنل مدیریت{% endblock %}
 {% block content %}
-<h2>⚙️ پنل مدیریت</h2>
+
+<style>
+/* ═══════════ پنل مدیریت — UI حرفه‌ای ═══════════ */
+.admin-root {
+  background: #0f1420;
+  border-radius: 16px;
+  overflow: hidden;
+  margin: -16px -16px 0;
+  padding: 24px;
+  min-height: calc(100vh - 32px);
+  color: #e8edf5;
+  font-family: Vazirmatn, Tahoma, sans-serif;
+}
+.admin-root h2 { font-size: 18px; margin: 0 0 16px; color: #fff; }
+.admin-tabs {
+  display: flex; gap: 6px; border-bottom: 1px solid #26324c; margin-bottom: 20px; padding-bottom: 0;
+}
+.admin-tabs button {
+  background: transparent; border: none; color: #8fa0b8; padding: 10px 18px;
+  font-size: 14px; cursor: pointer; font-family: inherit; font-weight: 600;
+  border-bottom: 2px solid transparent; transition: all .15s;
+}
+.admin-tabs button.active { color: #4f8cff; border-bottom-color: #4f8cff; }
+.admin-tabs button:hover { color: #c9d6ea; }
+
+/* Cards & Stats */
+.stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:24px; }
+.stat { background:#171f2e; border:1px solid #26324c; border-radius:12px; padding:16px; }
+.stat .num { font-size:28px; font-weight:700; color:#4f8cff; line-height:1.2; }
+.stat .lbl { font-size:12px; color:#8fa0b8; margin-top:4px; }
+
+/* Tables */
+.admin-table { width:100%; border-collapse:collapse; font-size:14px; margin-top:8px; }
+.admin-table th { text-align:right; padding:10px 12px; color:#8fa0b8; font-size:12px; font-weight:600; border-bottom:1px solid #26324c; }
+.admin-table td { padding:12px; border-bottom:1px solid #1c2537; }
+.admin-table tr:hover td { background:#171f2e; }
+
+/* Buttons */
+.abtn { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:8px;
+        border:none; cursor:pointer; font-family:inherit; font-size:13px; font-weight:600;
+        text-decoration:none; transition:filter .15s; }
+.abtn:hover { filter:brightness(1.2); }
+.abtn-primary { background:linear-gradient(90deg,#4f8cff,#7b5cff); color:#fff; }
+.abtn-success { background:#16a34a; color:#fff; }
+.abtn-secondary { background:#22304d; color:#a9c0e8; }
+.abtn-danger { background:#dc2626; color:#fff; }
+.abtn-sm { padding:5px 10px; font-size:12px; }
+
+/* Progress bar */
+.job-progress { background:#171f2e; border:1px solid #26324c; border-radius:12px; padding:16px; margin-bottom:16px; }
+.job-bar { height:6px; background:#1c2537; border-radius:3px; overflow:hidden; margin-top:8px; }
+.job-bar-fill { height:100%; background:linear-gradient(90deg,#4f8cff,#7b5cff); border-radius:3px; transition:width .3s; }
+
+/* Forms */
+.admin-form { background:#171f2e; border:1px solid #26324c; border-radius:12px; padding:20px; }
+.admin-form label { display:block; font-size:13px; margin:12px 0 6px; color:#c9d6ea; font-weight:600; }
+.admin-form input, .admin-form select, .admin-form textarea {
+  width:100%; padding:10px 12px; border:1px solid #26324c; border-radius:8px;
+  background:#0f1420; color:#e8edf5; font-size:14px; font-family:inherit;
+}
+.admin-form input:focus, .admin-form select:focus, .admin-form textarea:focus {
+  outline:none; border-color:#4f8cff;
+}
+.admin-form textarea { min-height:70px; resize:vertical; }
+.form-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
+.checkbox-row { display:flex; align-items:center; gap:8px; margin:12px 0; }
+.checkbox-row input[type=checkbox] { width:18px; height:18px; accent-color:#4f8cff; }
+.checkbox-row span { font-size:14px; color:#c9d6ea; }
+
+/* Status badges */
+.status-badge { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+.status-online { background:#052e16; color:#22c55e; }
+.status-offline { background:#450a0a; color:#ef4444; }
+.status-idle { background:#1c2537; color:#8fa0b8; }
+
+/* Channel cards */
+.channel-card { background:#171f2e; border:1px solid #26324c; border-radius:12px; padding:16px; margin-bottom:12px; }
+.channel-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+.channel-name { font-size:16px; font-weight:700; color:#fff; }
+.channel-stats { display:flex; gap:16px; font-size:13px; color:#8fa0b8; }
+.channel-actions { display:flex; gap:6px; flex-wrap:wrap; }
+
+/* Flash messages inside admin */
+.admin-flash { padding:12px 16px; border-radius:10px; margin-bottom:16px; font-size:14px; }
+.admin-flash.ok { background:#052e16; border:1px solid #166534; color:#86efac; }
+.admin-flash.err { background:#450a0a; border:1px solid #991b1b; color:#fca5a5; }
+.admin-flash.info { background:#172554; border:1px solid #1e40af; color:#93c5fd; }
+
+/* Loading spinner */
+.spinner { display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,.3);
+           border-top-color:#fff; border-radius:50%; animation:spin .6s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* Session status */
+.session-status { display:flex; align-items:center; gap:10px; padding:12px 16px; background:#171f2e;
+                  border:1px solid #26324c; border-radius:10px; margin-bottom:16px; font-size:14px; }
+.session-dot { width:10px; height:10px; border-radius:50%; }
+.session-dot.on { background:#22c55e; box-shadow:0 0 8px rgba(34,197,94,.5); }
+.session-dot.off { background:#ef4444; box-shadow:0 0 8px rgba(239,68,68,.5); }
+</style>
+
+<div class="admin-root">
+
+<!-- ═══════ Tabs ═══════ -->
+<div class="admin-tabs">
+  <button class="active" onclick="switchTab('dashboard', this)">📊 داشبورد</button>
+  <button onclick="switchTab('channels', this)">📢 کانال‌ها</button>
+  <button onclick="switchTab('settings', this)">⚙️ تنظیمات</button>
+</div>
+
+{% with msgs = get_flashed_messages() %}
+  {% for m in msgs %}<div class="admin-flash info">{{ m }}</div>{% endfor %}
+{% endwith %}
 
 {% if result %}
   {% if result.ok %}
-    <div class="flash">✅ دریافت انجام شد — عنوان: «{{ result.title or '-' }}» ، پیام‌های جدید: {{ result.new }}{% if result.downloaded is defined %} ، فایل‌های دانلودشده: {{ result.downloaded }}{% endif %}{% if result.published is defined %} ، منتشرشده به هاست: {{ result.published }}{% if result.ftp_errors %} ، خطای FTP: {{ result.ftp_errors }}{% endif %}{% endif %}</div>
+    <div class="admin-flash ok">✅ {{ result.title or 'عملیات موفق' }}{% if result.new %} — جدید: {{ result.new }}{% endif %}{% if result.published %} ، منتشرشده: {{ result.published }}{% endif %}</div>
   {% else %}
-    <div class="flash err">❌ {{ result.error }}</div>
+    <div class="admin-flash err">❌ {{ result.error }}</div>
   {% endif %}
 {% endif %}
 
-<div class="card">
-  <h2>۱) تنظیمات اصلی</h2>
-  <form method="post" action="{{ url_for('admin_save') }}">
-    <div class="row">
-      <div>
-        <label for="engine">موتور دریافت</label>
-        <select id="engine" name="engine">
-          <option value="telethon" {{ 'selected' if settings.engine == 'telethon' }}>روش اول — Telethon (تاریخچه کامل)</option>
-          <option value="web" {{ 'selected' if settings.engine == 'web' }}>وب t.me/s (بدون نیاز به API)</option>
-        </select>
-      </div>
-      <div>
-        <label for="refresh_interval">فاصله دریافت خودکار (ثانیه)</label>
-        <input type="number" id="refresh_interval" name="refresh_interval" min="15" value="{{ settings.refresh_interval }}">
-      </div>
-    </div>
-    <div class="row">
-      <div>
-        <label for="history_limit">سقف تاریخچه (۰ = کل تاریخچه)</label>
-        <input type="number" id="history_limit" name="history_limit" min="0" value="{{ settings.history_limit }}">
-      </div>
-      <div>
-        <label for="web_max_pages">حداکثر صفحه وب (موتور web)</label>
-        <input type="number" id="web_max_pages" name="web_max_pages" min="1" value="{{ settings.web_max_pages }}">
-      </div>
-    </div>
-    <div class="row">
-      <div>
-        <label for="max_stored">سقف ذخیره هر کانال</label>
-        <input type="number" id="max_stored" name="max_stored" min="10" value="{{ settings.max_stored }}">
-      </div>
-      <div>
-        <label for="display_limit">تعداد نمایش در صفحه عمومی</label>
-        <input type="number" id="display_limit" name="display_limit" min="1" value="{{ settings.display_limit }}">
-      </div>
-    </div>
-    <label for="channels">کانال‌ها (هر خط یک نام، بدون @)</label>
-    <textarea id="channels" name="channels">{{ settings.channels | join('\n') }}</textarea>
-    <label>
-      <input type="checkbox" name="live_listen" {{ 'checked' if settings.live_listen }} style="margin-left:6px">
-      دریافت خودکار دوره‌ای فعال باشد
-    </label>
-    <br><button class="btn" type="submit">💾 ذخیره تنظیمات</button>
-  </form>
-</div>
+<!-- ═══════ Dashboard Tab ═══════ -->
+<div id="tab-dashboard">
 
-<div class="card">
-  <h2>۲) وضعیت و دریافت دستی</h2>
-  <div class="muted" style="margin-bottom:8px">دریافت در پس‌زمینه اجرا می‌شود (ممکن است با دانلود رسانه‌ها چند دقیقه طول بکشد) — با «وضعیت کار» نتیجه را ببینید.</div>
-  <button class="btn gray" id="job-btn" onclick="pollJob()" style="margin-bottom:8px">📋 وضعیت کار</button>
-  <div id="job-result" style="margin-bottom:10px"></div>
-  <table>
-    <tr><th>کانال</th><th>تعداد پیام ذخیره‌شده</th><th>دریافت دستی</th></tr>
-    {% for ch, c in counts.items() %}
-      <tr>
-        <td>@{{ ch }}</td><td>{{ c }}</td>
-        <td>
-          <form method="post" action="{{ url_for('admin_fetch') }}" style="margin:0">
-            <input type="hidden" name="channel" value="{{ ch }}">
-            <button class="btn green" type="submit" style="padding:5px 14px;margin-top:0">🔄 دریافت پیام‌ها</button>
-          </form>
-          <form method="post" action="{{ url_for('admin_fetch') }}" style="margin:4px 0 0">
-            <input type="hidden" name="channel" value="{{ ch }}">
-            <input type="hidden" name="full" value="1">
-            <button class="btn gray" type="submit" style="padding:5px 14px;margin-top:0">📜 دریافت کامل تاریخچه</button>
-          </form>
-          <form method="post" action="{{ url_for('admin_republish') }}" style="margin:4px 0 0">
-            <input type="hidden" name="channel" value="{{ ch }}">
-            <input type="hidden" name="limit" value="200">
-            <button class="btn gray" type="submit" style="padding:5px 14px;margin-top:0">📤 انتشار مجدد</button>
-          </form>
-          <form method="post" action="{{ url_for('admin_migrate_media') }}" style="margin:4px 0 0">
-            <input type="hidden" name="channel" value="{{ ch }}">
-            <input type="hidden" name="limit" value="2000">
-            <button class="btn gray" type="submit" style="padding:5px 14px;margin-top:0">🗂 مهاجرت رسانه‌ها</button>
-          </form>
-          <form method="post" action="{{ url_for('admin_repair_media') }}" style="margin:4px 0 0">
-            <input type="hidden" name="channel" value="{{ ch }}">
-            <input type="hidden" name="limit" value="100">
-            <button class="btn gray" type="submit" style="padding:5px 14px;margin-top:0">🛠 بازیابی رسانه‌ها (از تلگرام)</button>
-          </form>
-          <form method="post" action="{{ url_for('admin_group_products') }}" style="margin:4px 0 0">
-            <input type="hidden" name="channel" value="{{ ch }}">
-            <button class="btn green" type="submit" style="padding:5px 14px;margin-top:0">🧩 گروه‌بندی محصولات</button>
-          </form>
-          <form method="post" action="{{ url_for('admin_harvest') }}" style="margin:4px 0 0">
-            <input type="hidden" name="channel" value="{{ ch }}">
-            <input type="hidden" name="target" value="100">
-            <button class="btn" type="submit" style="padding:5px 14px;margin-top:0">🌾 برداشت تا ۱۰۰ محصول</button>
-          </form>
-        </td>
-      </tr>
-    {% else %}
-      <tr><td colspan="3" class="muted">کانالی ثبت نشده — اول تنظیمات بالا را ذخیره کنید.</td></tr>
+  <!-- Live Job Status -->
+  <div class="job-progress" id="job-panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h2 style="margin:0;font-size:15px;">📋 وضعیت کار جاری</h2>
+      <button class="abtn abtn-secondary abtn-sm" onclick="checkJob()">بروزرسانی</button>
+    </div>
+    <div id="job-content" style="margin-top:10px;color:#8fa0b8;font-size:13px;">
+      <span class="spinner"></span> در حال بررسی...
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="num" id="stat-products">{{ counts.values()|sum if counts else 0 }}</div>
+      <div class="lbl">📦 کل پیام‌های ذخیره‌شده</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ counts.keys()|length }}</div>
+      <div class="lbl">📢 کانال‌های فعال</div>
+    </div>
+    <div class="stat">
+      <div class="num" style="color:#22c55e;">{{ 'فعال' if settings.live_listen else 'غیرفعال' }}</div>
+      <div class="lbl">🔄 دریافت خودکار</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ settings.refresh_interval }}s</div>
+      <div class="lbl">⏱ فاصله بررسی</div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <h2>⚡ عملیات سریع</h2>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px;">
+    {% for ch in counts.keys() %}
+      <form method="post" action="{{ url_for('admin_fetch') }}" style="margin:0;">
+        <input type="hidden" name="channel" value="{{ ch }}">
+        <button class="abtn abtn-primary" type="submit">🔄 دریافت {{ ch }}</button>
+      </form>
+      <form method="post" action="{{ url_for('admin_group_products') }}" style="margin:0;">
+        <input type="hidden" name="channel" value="{{ ch }}">
+        <button class="abtn abtn-success" type="submit">🧩 گروه‌بندی {{ ch }}</button>
+      </form>
     {% endfor %}
-  </table>
+  </div>
+
+  <!-- Telegram session status -->
+  <div class="session-status">
+    <div class="session-dot {{ 'on' if has_session else 'off' }}"></div>
+    <span>{{ '✅ سشن تلگرام فعال است' if has_session else '❌ سشن تلگرام تنظیم نشده' }}</span>
+    {% if not has_session %}
+      <span style="color:#8fa0b8;font-size:12px;margin-inline-start:8px;">→ از تب تنظیمات وارد شوید</span>
+    {% endif %}
+  </div>
+
+  <!-- Recent logs preview -->
+  <div style="background:#171f2e;border:1px solid #26324c;border-radius:12px;padding:16px;">
+    <h2 style="font-size:14px;margin:0 0 10px;">📝 آخرین فعالیت‌ها</h2>
+    <div id="recent-activity" style="font-size:12px;color:#8fa0b8;font-family:monospace;">
+      <span class="spinner"></span> در حال بارگذاری...
+    </div>
+  </div>
 </div>
 
-<div class="card">
-  <h2>۳) مسیر اتصال به تلگرام (رله اختیاری)</h2>
-  <div class="muted" style="margin-bottom:8px">
-    پیش‌فرض: اتصال مستقیم. اگر سرور به تلگرام دسترسی نداشته باشد (خطای No route to host / Network is unreachable
-    در تست پایین)، یکی از دو گزینه را فعال کنید. حالت «آدرس پایه سفارشی» فقط موتور web را رد می‌کند؛
-    برای موتور Telethon باید حالت «پروکسی» را تنظیم کنید.
+<!-- ═══════ Channels Tab ═══════ -->
+<div id="tab-channels" style="display:none;">
+
+  {% for ch, c in counts.items() %}
+  <div class="channel-card">
+    <div class="channel-header">
+      <div>
+        <div class="channel-name">@{{ ch }}</div>
+        <div class="channel-stats">
+          <span>💬 {{ c }} پیام</span>
+          <span>📦 {{ c }} آیتم</span>
+        </div>
+      </div>
+      <span class="status-badge status-online">● فعال</span>
+    </div>
+    <div class="channel-actions">
+      <form method="post" action="{{ url_for('admin_fetch') }}" style="margin:0;">
+        <input type="hidden" name="channel" value="{{ ch }}">
+        <button class="abtn abtn-primary abtn-sm" type="submit">🔄 دریافت جدید</button>
+      </form>
+      <form method="post" action="{{ url_for('admin_fetch') }}" style="margin:0;">
+        <input type="hidden" name="channel" value="{{ ch }}">
+        <input type="hidden" name="full" value="1">
+        <button class="abtn abtn-secondary abtn-sm" type="submit">📜 تاریخچه کامل</button>
+      </form>
+      <form method="post" action="{{ url_for('admin_group_products') }}" style="margin:0;">
+        <input type="hidden" name="channel" value="{{ ch }}">
+        <button class="abtn abtn-success abtn-sm" type="submit">🧩 گروه‌بندی</button>
+      </form>
+      <form method="post" action="{{ url_for('admin_republish') }}" style="margin:0;">
+        <input type="hidden" name="channel" value="{{ ch }}">
+        <input type="hidden" name="limit" value="500">
+        <button class="abtn abtn-secondary abtn-sm" type="submit">📤 انتشار مجدد</button>
+      </form>
+      <form method="post" action="{{ url_for('admin_harvest') }}" style="margin:0;">
+        <input type="hidden" name="channel" value="{{ ch }}">
+        <input type="hidden" name="target" value="100">
+        <button class="abtn abtn-primary abtn-sm" type="submit">🌾 برداشت تا ۱۰۰</button>
+      </form>
+      <form method="post" action="{{ url_for('admin_repair_media') }}" style="margin:0;">
+        <input type="hidden" name="channel" value="{{ ch }}">
+        <button class="abtn abtn-secondary abtn-sm" type="submit">🛠 بازیابی رسانه</button>
+      </form>
+    </div>
   </div>
-  <form method="post" action="{{ url_for('admin_relay') }}">
-    <label for="relay_mode">حالت اتصال</label>
-    <select id="relay_mode" name="relay_mode">
-      <option value="none" {{ 'selected' if relay.mode == 'none' }}>اتصال مستقیم (بدون رله)</option>
-      <option value="proxy" {{ 'selected' if relay.mode == 'proxy' }}>پروکسی SOCKS5 / HTTP (هر دو موتور)</option>
-      <option value="base_url" {{ 'selected' if relay.mode == 'base_url' }}>آدرس پایه سفارشی (فقط موتور web)</option>
-    </select>
-    <label for="relay_proxy">آدرس پروکسی (در حالت پروکسی)</label>
-    <input type="text" id="relay_proxy" name="relay_proxy" value="{{ relay.proxy }}" placeholder="socks5://user:pass@1.2.3.4:1080">
-    <label for="relay_base_url">آدرس پایه سفارشی (در حالت آدرس پایه — مثل Worker کلادفلر)</label>
-    <input type="text" id="relay_base_url" name="relay_base_url" value="{{ relay.base_url }}" placeholder="https://my-worker.example.workers.dev">
-    <label>
-      <input type="checkbox" name="force_ipv4" {{ 'checked' if settings.force_ipv4 }} style="margin-left:6px">
-      اجبار اتصال روی IPv4 (اگر تست IPv6 خراب بود و IPv4 سالم بود، فعال کنید)
-    </label>
-    <br><button class="btn" type="submit">💾 ذخیره و اعمال مسیر اتصال</button>
-  </form>
+  {% else %}
+  <div class="admin-flash info">کانالی ثبت نشده — از تب تنظیمات اضافه کنید.</div>
+  {% endfor %}
+
+  <a href="https://stlkala.com/gallery.php" target="_blank" class="abtn abtn-success" style="margin-top:12px;">🖼 مشاهده گالری ↗</a>
 </div>
 
-<div class="card">
-  <h2>۴) تست اتصال به تلگرام</h2>
-  <div class="muted" style="margin-bottom:8px">
-    این تست از داخل سرور اجرا می‌شود (نه از مرورگر شما) و از همان مسیری استفاده می‌کند که دریافت پیام‌ها استفاده می‌کند؛
-    اگر سبز شد یعنی سرور از طریق مسیر فعلی به تلگرام دسترسی دارد.
+<!-- ═══════ Settings Tab ═══════ -->
+<div id="tab-settings" style="display:none;">
+
+  <div class="admin-form" style="margin-bottom:16px;">
+    <h2 style="font-size:15px;">⚙️ تنظیمات دریافت</h2>
+    <form method="post" action="{{ url_for('admin_save') }}">
+      <div class="form-row">
+        <div>
+          <label>فاصله دریافت خودکار (ثانیه)</label>
+          <input type="number" name="refresh_interval" min="15" value="{{ settings.refresh_interval }}">
+        </div>
+        <div>
+          <label>سقف تاریخچه</label>
+          <input type="number" name="history_limit" min="0" value="{{ settings.history_limit }}">
+        </div>
+        <div>
+          <label>سقف ذخیره</label>
+          <input type="number" name="max_stored" min="10" value="{{ settings.max_stored }}">
+        </div>
+        <div>
+          <label>نمایش در صفحه عمومی</label>
+          <input type="number" name="display_limit" min="1" value="{{ settings.display_limit }}">
+        </div>
+      </div>
+      <label>کانال‌ها (هر خط یک نام)</label>
+      <textarea name="channels">{{ settings.channels|join('\n') }}</textarea>
+      <div class="checkbox-row">
+        <input type="checkbox" id="live" name="live_listen" {{ 'checked' if settings.live_listen }}>
+        <span for="live">دریافت خودکار فعال</span>
+      </div>
+      <input type="hidden" name="engine" value="telethon">
+      <input type="hidden" name="web_max_pages" value="5">
+      <button class="abtn abtn-primary" type="submit" style="margin-top:12px;">💾 ذخیره تنظیمات</button>
+    </form>
   </div>
-  <button class="btn" id="tg-test-btn" onclick="runTgTest()">🔍 تست اتصال به تلگرام</button>
-  <button class="btn gray" id="net-diag-btn" onclick="runNetDiag()" style="margin-inline-start:8px">🩺 عیب‌یابی کامل شبکه</button>
-  <div id="tg-test-result" style="margin-top:10px"></div>
+
+  {% if not has_session %}
+  <div class="admin-form" style="margin-bottom:16px;">
+    <h2 style="font-size:15px;">🔐 ورود تلگرام</h2>
+    <form method="post" action="{{ url_for('tg_send_code') }}">
+      <div class="form-row">
+        <div>
+          <label>api_id</label>
+          <input type="text" name="api_id" value="{{ api_id_env }}" placeholder="123456">
+        </div>
+        <div>
+          <label>api_hash</label>
+          <input type="text" name="api_hash" value="{{ api_hash_env }}" placeholder="a1b2c3...">
+        </div>
+        <div>
+          <label>شماره تلفن</label>
+          <input type="text" name="phone" placeholder="+98912...">
+        </div>
+      </div>
+      <button class="abtn abtn-secondary" type="submit">📨 ارسال کد</button>
+    </form>
+    <form method="post" action="{{ url_for('tg_signin') }}" style="margin-top:14px;">
+      <div class="form-row">
+        <div>
+          <label>کد ۵ رقمی</label>
+          <input type="text" name="code" placeholder="12345">
+        </div>
+        <div>
+          <label>رمز 2FA (اختیاری)</label>
+          <input type="password" name="password">
+        </div>
+      </div>
+      <button class="abtn abtn-primary" type="submit">✅ تکمیل ورود</button>
+    </form>
+  </div>
+  {% endif %}
+
 </div>
+
+</div><!-- .admin-root -->
 
 <script>
-async function pollJob() {
-  const btn = document.getElementById('job-btn');
-  const box = document.getElementById('job-result');
-  btn.disabled = true; btn.textContent = '⏳ ...';
+// ═══════ Tab Switching ═══════
+function switchTab(name, btn) {
+  document.querySelectorAll('.admin-tabs button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  ['dashboard','channels','settings'].forEach(t => {
+    const el = document.getElementById('tab-' + t);
+    if (el) el.style.display = t === name ? '' : 'none';
+  });
+}
+
+// ═══════ Job Status (live) ═══════
+let jobTimer = null;
+
+async function checkJob() {
+  const el = document.getElementById('job-content');
   try {
-    const r = await fetch('{{ url_for("admin_job_status") }}', {cache: 'no-store'});
+    const r = await fetch('{{ url_for("admin_job_status") }}', {cache:'no-store'});
     const d = await r.json();
     if (d.running) {
-      box.innerHTML = '<div class="flash">⏳ دریافت @' + d.channel + ' در حال اجراست (' + d.elapsed + ' ثانیه) — دوباره چک کنید.</div>';
+      const pct = Math.min((d.elapsed / 600) * 100, 95); // estimate 10 min
+      el.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="color:#4f8cff;">⏳ ${d.channel}</span>
+          <span style="color:#8fa0b8;">${d.elapsed}s</span>
+        </div>
+        <div class="job-bar"><div class="job-bar-fill" style="width:${pct}%"></div></div>`;
+      if (!jobTimer) jobTimer = setTimeout(checkJob, 5000);
     } else if (d.result) {
       const res = d.result;
-      if (res.uploaded !== undefined) {
-        box.innerHTML = res.ok
-          ? '<div class="flash">✅ مهاجرت رسانه‌ها @' + d.channel + ' — آپلودشده: ' + res.uploaded +
-            ' ، قبلاً منتشرشده: ' + (res.skipped || 0) +
-            (res.failed ? ' ، خطا: ' + res.failed : '') + '</div>'
-          : '<div class="flash err">❌ مهاجرت: ' + (res.error || 'خطا') + '</div>';
-      } else if (res.grouped !== undefined) {
-        box.innerHTML = res.ok
-          ? '<div class="flash">✅ گروه‌بندی محصولات @' + d.channel + ' — محصول ساخته‌شده: ' + res.grouped +
-            ' ، ردشده توسط AI: ' + (res.skipped || 0) +
-            (res.failed ? ' ، خطا: ' + res.failed : '') + '</div>'
-          : '<div class="flash err">❌ گروه‌بندی: ' + (res.error || 'خطا') + '</div>';
+      let msg = '';
+      if (res.ok) {
+        if (res.products !== undefined) msg = `✅ برداشت: ${res.products}/${res.target} محصول (${res.rounds} دور)`;
+        else if (res.grouped !== undefined) msg = `✅ گروه‌بندی: ${res.grouped} محصول`;
+        else if (res.uploaded !== undefined) msg = `✅ مهاجرت: ${res.uploaded} فایل`;
+        else if (res.recovered !== undefined) msg = `✅ بازیابی: ${res.recovered} رسانه`;
+        else msg = `✅ دریافت: ${res.new||0} جدید، ${res.published||0} منتشرشده`;
       } else {
-      box.innerHTML = res.ok
-        ? '<div class="flash">✅ دریافت @' + d.channel + ' — پیام‌های جدید: ' + (res.new || 0) +
-          ' ، منتشرشده به هاست: ' + (res.published || 0) +
-          (res.ai_generated ? ' ، تولید AI: ' + res.ai_generated : '') +
-          (res.ftp_errors ? ' ، خطای FTP: ' + res.ftp_errors : '') + '</div>'
-        : '<div class="flash err">❌ دریافت @' + d.channel + ': ' + (res.error || 'خطا') + '</div>';
+        msg = `❌ ${res.error || 'خطا'}`;
       }
+      el.innerHTML = `<div class="admin-flash ${res.ok?'ok':'err'}" style="margin:0;">${msg}</div>`;
+      if (jobTimer) { clearTimeout(jobTimer); jobTimer = null; }
     } else {
-      box.innerHTML = '<div class="muted">هنوز کاری اجرا نشده است.</div>';
+      el.innerHTML = '<span style="color:#8fa0b8;">فعالیتی در جریان نیست</span>';
     }
-  } catch (e) {
-    box.innerHTML = '<div class="flash err">❌ خطا: ' + e + '</div>';
+  } catch(e) {
+    el.innerHTML = `<span style="color:#ef4444;">خطا: ${e}</span>`;
   }
-  btn.disabled = false; btn.textContent = '📋 وضعیت کار';
 }
+
+// Auto-check on page load
+checkJob();
+
+// ═══════ Auto-refresh job status while running ═══════
+setInterval(() => {
+  const el = document.getElementById('job-content');
+  if (el && el.innerHTML.includes('⏳')) checkJob();
+}, 10000);
 </script>
 
-<script>
-async function runTgTest() {
-  const btn = document.getElementById('tg-test-btn');
-  const box = document.getElementById('tg-test-result');
-  btn.disabled = true;
-  btn.textContent = '⏳ در حال تست...';
-  box.innerHTML = '';
-  try {
-    const r = await fetch('{{ url_for("tg_test") }}', {cache: 'no-store'});
-    const d = await r.json();
-    let html = d.ok
-      ? '<div class="flash">✅ سرور به تلگرام دسترسی دارد — اتصال برقرار است.</div>'
-      : '<div class="flash err">❌ سرور به تلگرام دسترسی ندارد — اتصال برقرار نشد.</div>';
-    html += '<table>';
-    for (const c of d.checks) {
-      html += '<tr><td>' + c.name + '</td><td class="' + (c.ok ? 'ok' : 'no') + '">' +
-              (c.ok ? '✔ ' : '✖ ') + c.detail + '</td></tr>';
-    }
-    html += '</table><div class="muted">زمان تست: ' + d.time + '</div>';
-    box.innerHTML = html;
-  } catch (e) {
-    box.innerHTML = '<div class="flash err">❌ خطا در اجرای تست: ' + e + '</div>';
-  }
-  btn.disabled = false;
-  btn.textContent = '🔍 تست اتصال به تلگرام';
-}
-
-async function runNetDiag() {
-  const btn = document.getElementById('net-diag-btn');
-  const box = document.getElementById('tg-test-result');
-  btn.disabled = true;
-  btn.textContent = '⏳ در حال عیب‌یابی...';
-  box.innerHTML = '';
-  try {
-    const r = await fetch('{{ url_for("admin_diagnose") }}', {cache: 'no-store'});
-    const d = await r.json();
-    let html = d.ok
-      ? '<div class="flash">✅ همه بررسی‌های شبکه موفق بود.</div>'
-      : '<div class="flash err">❌ یکی یا چند بررسی شبکه ناموفق بود — جزئیات پایین.</div>';
-    html += '<table>';
-    for (const c of d.checks) {
-      if (!c.detail && c.ok && c.name.startsWith('🔎')) {
-        html += '<tr><td colspan="2"><b>' + c.name + '</b></td></tr>';
-      } else {
-        html += '<tr><td>' + c.name + '</td><td class="' + (c.ok ? 'ok' : 'no') + '">' +
-                (c.ok ? '✔ ' : '✖ ') + c.detail + '</td></tr>';
-      }
-    }
-    html += '</table><div class="muted">زمان عیب‌یابی: ' + d.time + '</div>';
-    box.innerHTML = html;
-  } catch (e) {
-    box.innerHTML = '<div class="flash err">❌ خطا در اجرای عیب‌یابی: ' + e + '</div>';
-  }
-  btn.disabled = false;
-  btn.textContent = '🩺 عیب‌یابی کامل شبکه';
-}
-</script>
-
-<div class="card">
-  <h2>۵) انتشار به هاست شما (cPanel) و هوش مصنوعی</h2>
-  <p>این مقادیر در <b>متغیرهای محیطی Railway</b> تنظیم می‌شوند (Service → Variables) و با هر تغییر، دیپلوی جدید می‌سازند:</p>
-  <table>
-    <tr><th>متغیر</th><th>کاربرد</th></tr>
-    <tr><td><code>PUBLISH_ENDPOINT_URL</code></td><td>آدرس فایل <code>receiver.php</code> آپلودشده روی cPanel شما</td></tr>
-    <tr><td><code>PUBLISH_SECRET</code></td><td>رمز مشترک — باید در receiver.php هم همان باشد</td></tr>
-    <tr><td><code>FTP_HOST</code> / <code>FTP_USER</code> / <code>FTP_PASS</code></td><td>اطلاعات FTP هاست (از cPanel → FTP Accounts)</td></tr>
-    <tr><td><code>FTP_SECURE</code></td><td><code>1</code> اگر هاست FTPS دارد (پورت 21 با TLS)</td></tr>
-    <tr><td><code>FTP_REMOTE_DIR</code></td><td>پوشه مقصد رسانه‌ها، مثل <code>public_html/wp-content/uploads/tg</code></td></tr>
-    <tr><td><code>MEDIA_PUBLIC_BASE_URL</code></td><td>آدرس عمومی همان پوشه، مثل <code>https://example.com/wp-content/uploads/tg</code></td></tr>
-    <tr><td><code>MAX_MEDIA_MB</code></td><td>سقف حجم هر فایل رسانه (پیش‌فرض 40)</td></tr>
-    <tr><td><code>AI_API_BASE_URL</code> / <code>AI_API_KEY</code> / <code>AI_MODEL</code></td><td>هوش مصنوعی عنوان/دسته/تگ فارسی (سازگار با OpenAI)</td></tr>
-  </table>
-  <p class="muted">اگر endpoint و رمز ست شده باشند، هر پیام پس از دریافت: رسانه به تمپ دانلود می‌شود → FTP به هاست شما → متادیتا به receiver.php → حذف تمپ؛ پس دیسک Railway پر نمی‌شود. در غیر این صورت رفتار قبلی (ذخیره محلی) باقی می‌ماند. فایل <code>receiver.php</code> در ریشه پروژه است؛ روی cPanel آپلودش کنید و مقادیر دیتابیس داخلش را ویرایش کنید.</p>
-</div>
-
-<div class="card">
-  <h2>۶) ورود تلگرام (روش اول — Telethon)</h2>
-  {% if has_session %}
-    <div class="flash">✅ سشن تلگرام تنظیم شده است؛ موتور telethon آماده کار است.</div>
-  {% else %}
-    <div class="muted" style="margin-bottom:8px">
-      گام ۱: api_id و api_hash را از <a href="https://my.telegram.org" target="_blank">my.telegram.org</a> بگیرید.
-      گام ۲: شماره را وارد و کد درخواست کنید. گام ۳: کد ۵ رقمی (و در صورت داشتن 2FA، رمز دوم) را وارد کنید.
-      سشن ساخته‌شده به‌صورت دائمی ذخیره می‌شود و بعد از این فقط یک بار لازم است.
-    </div>
-  {% endif %}
-  <form method="post" action="{{ url_for('tg_send_code') }}">
-    <div class="row">
-      <div>
-        <label for="api_id">api_id (عدد)</label>
-        <input type="text" id="api_id" name="api_id" value="{{ api_id_env }}" placeholder="مثلاً 123456">
-      </div>
-      <div>
-        <label for="api_hash">api_hash</label>
-        <input type="text" id="api_hash" name="api_hash" value="{{ api_hash_env }}" placeholder="a1b2c3...">
-      </div>
-      <div>
-        <label for="phone">شماره تلفن (با کد کشور)</label>
-        <input type="text" id="phone" name="phone" placeholder="+98912...">
-      </div>
-    </div>
-    <button class="btn gray" type="submit">📨 ارسال کد ورود</button>
-  </form>
-  <form method="post" action="{{ url_for('tg_signin') }}" style="margin-top:14px">
-    <div class="row">
-      <div>
-        <label for="code">کد ۵ رقمی تلگرام</label>
-        <input type="text" id="code" name="code" placeholder="12345">
-      </div>
-      <div>
-        <label for="password">رمز دوم 2FA (در صورت وجود)</label>
-        <input type="password" id="password" name="password">
-      </div>
-    </div>
-    <button class="btn" type="submit">✅ تکمیل ورود و ذخیره سشن</button>
-  </form>
-</div>
 {% endblock %}
