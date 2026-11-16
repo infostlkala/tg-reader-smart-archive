@@ -20,6 +20,11 @@ DEFAULT_SETTINGS = {
     "tg_session": "",              # سشن دائمی تلگرام؛ در settings.json ذخیره می‌شود
     "api_id": "",                  # API ID برای استفاده پس از راه‌اندازی مجدد
     "api_hash": "",                # API Hash برای استفاده پس از راه‌اندازی مجدد
+    # هوش مصنوعی (از پنل قابل تنظیم؛ اگر خالی باشد از متغیر محیطی استفاده می‌شود)
+    "ai_base_url": "",             # مثل https://api.gapgpt.app/v1
+    "ai_api_key": "",              # کلید API
+    "ai_model": "",                # نام مدل مثل gpt-6-luna
+    "ai_vision": True,             # تحلیل بینایی عکس (روشن/خاموش)
 }
 
 

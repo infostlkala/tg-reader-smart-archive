@@ -108,6 +108,7 @@
 <div class="admin-tabs">
   <button class="active" onclick="switchTab('dashboard', this)">📊 داشبورد</button>
   <button onclick="switchTab('channels', this)">📢 کانال‌ها</button>
+  <button onclick="switchTab('ai', this)">🤖 هوش مصنوعی</button>
   <button onclick="switchTab('settings', this)">⚙️ تنظیمات</button>
 </div>
 
@@ -316,6 +317,51 @@
 
 </div>
 
+<!-- ═══════ AI Tab ═══════ -->
+<div id="tab-ai" style="display:none;">
+
+  <div class="admin-form">
+    <h2 style="font-size:15px;">🤖 تنظیمات هوش مصنوعی</h2>
+    <div style="color:#8fa0b8;font-size:13px;margin-bottom:12px;">
+      عنوان، توضیح، دسته‌بندی و تگ فارسی محصولات تولید می‌شود.
+      اگر خالی بگذارید، از متغیرهای محیطی Railway استفاده می‌شود.
+    </div>
+    <form method="post" action="{{ url_for('admin_ai_save') }}">
+      <div class="form-row">
+        <div>
+          <label>آدرس پایه API</label>
+          <input type="text" name="ai_base_url" value="{{ settings.ai_base_url }}" placeholder="https://api.gapgpt.app/v1" dir="ltr">
+        </div>
+        <div>
+          <label>نام مدل</label>
+          <input type="text" name="ai_model" value="{{ settings.ai_model }}" placeholder="gpt-6-luna" dir="ltr">
+        </div>
+      </div>
+      <label>کلید API</label>
+      <input type="password" name="ai_api_key" value="{{ settings.ai_api_key }}" placeholder="sk-... (خالی = بدون تغییر)" dir="ltr">
+      <div class="checkbox-row">
+        <input type="checkbox" id="ai_vision" name="ai_vision" {{ 'checked' if settings.ai_vision }}>
+        <span for="ai_vision">تحلیل بینایی عکس (عنوان/توضیح از روی خود تصویر — کندتر ولی دقیق‌تر)</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+        <button class="abtn abtn-primary" type="submit">💾 ذخیره</button>
+        <button class="abtn abtn-secondary" type="button" onclick="testAI()">🔌 تست اتصال</button>
+      </div>
+    </form>
+    <div id="ai-test-result" style="margin-top:12px;"></div>
+  </div>
+
+  <div style="background:#171f2e;border:1px solid #26324c;border-radius:12px;padding:16px;margin-top:16px;">
+    <h2 style="font-size:14px;margin:0 0 8px;">ℹ️ راهنما</h2>
+    <ul style="color:#8fa0b8;font-size:13px;line-height:2;padding-inline-start:20px;margin:0;">
+      <li><b>آدرس پایه:</b> سازگار با OpenAI — بدون <code>/chat/completions</code></li>
+      <li><b>تحلیل بینایی:</b> مدل باید قابلیت image_upload داشته باشد</li>
+      <li><b>خاموش کردن vision:</b> برای برداشت سریع تاریخچه، غیرفعال کنید</li>
+      <li>تغییرات بلافاصله روی دریافت‌ها و گروه‌بندی‌های بعدی اعمال می‌شود</li>
+    </ul>
+  </div>
+</div>
+
 </div><!-- .admin-root -->
 
 <script>
@@ -323,7 +369,7 @@
 function switchTab(name, btn) {
   document.querySelectorAll('.admin-tabs button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  ['dashboard','channels','settings'].forEach(t => {
+  ['dashboard','channels','ai','settings'].forEach(t => {
     const el = document.getElementById('tab-' + t);
     if (el) el.style.display = t === name ? '' : 'none';
   });
@@ -370,6 +416,23 @@ async function checkJob() {
 
 // Auto-check on page load
 checkJob();
+
+// ═══════ AI Test ═══════
+async function testAI() {
+  const el = document.getElementById('ai-test-result');
+  el.innerHTML = '<span class="spinner"></span> در حال تست...';
+  try {
+    const r = await fetch('{{ url_for("admin_ai_test") }}', {cache:'no-store'});
+    const d = await r.json();
+    if (d.ok) {
+      el.innerHTML = `<div class="admin-flash ok">✅ اتصال موفق — مدل: <b>${d.model}</b><br><small style="color:#8fa0b8;">پاسخ: ${d.response}</small></div>`;
+    } else {
+      el.innerHTML = `<div class="admin-flash err">❌ ${d.error}</div>`;
+    }
+  } catch(e) {
+    el.innerHTML = `<div class="admin-flash err">❌ خطا: ${e}</div>`;
+  }
+}
 
 // ═══════ Auto-refresh job status while running ═══════
 setInterval(() => {

@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>پنل مدیریت</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Vazirmatn, Tahoma, sans-serif; background:#f4f6f8; color:#1f2937; margin:0; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 16px; }
+  header { background:#1e293b; color:#fff; padding:14px 18px; border-radius:12px; margin-bottom:16px;
+           display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;}
+  header a { color:#93c5fd; text-decoration:none; font-size:14px; }
+  h1 { font-size:20px; margin:0; } h2 { font-size:17px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .tabs a { background:#fff; border:1px solid #d1d5db; border-radius:8px; padding:6px 14px;
+            text-decoration:none; color:#374151; font-size:14px; }
+  .tabs a.active { background:#2563eb; color:#fff; border-color:#2563eb; }
+  .card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin-bottom:14px; }
+  .msg { border-bottom:1px solid #f1f5f9; padding:10px 4px; }
+  .msg:last-child { border-bottom:none; }
+  .msg .meta { font-size:12px; color:#6b7280; margin-bottom:4px; }
+  .msg a { color:#2563eb; text-decoration:none; }
+  .badge { background:#dbeafe; color:#1e40af; border-radius:6px; padding:1px 8px; font-size:11px; margin-inline-start:6px; }
+  form label { display:block; font-size:13px; margin:10px 0 4px; font-weight:600; }
+  form input[type=text], form input[type=number], form input[type=password], form select, form textarea {
+      width:100%; padding:8px 10px; border:1px solid #d1d5db; border-radius:8px; font-size:14px;
+      font-family:inherit; background:#fff; }
+  form textarea { min-height:80px; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; } .row > div { flex:1; min-width:140px; }
+  .btn { display:inline-block; background:#2563eb; color:#fff; border:none; border-radius:8px;
+         padding:9px 18px; font-size:14px; cursor:pointer; font-family:inherit; margin-top:10px; text-decoration:none;}
+  .btn.gray { background:#64748b; }
+  .btn.green { background:#16a34a; }
+  .flash { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:14px;}
+  .flash.err { background:#fef2f2; border-color:#fca5a5; color:#991b1b; }
+  .muted { color:#6b7280; font-size:12px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th,td { text-align:right; padding:8px 10px; border-bottom:1px solid #f1f5f9; }
+  .ok { color:#16a34a; } .no { color:#dc2626; }
+  .filebox { display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin:8px 0;overflow-wrap:anywhere }
+  .tags { display:flex;gap:5px;flex-wrap:wrap;margin-top:8px }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>📡 خواننده کانال تلگرام</h1>
+    <div>
+      
+        <a href="/admin">⚙️ پنل مدیریت</a> |
+        <a href="/admin/logout">خروج</a>
+      
+    </div>
+  </header>
+  
+    
+  
+  
+
+<style>
+/* ═══════════ پنل مدیریت — UI حرفه‌ای ═══════════ */
+.admin-root {
+  background: #0f1420;
+  border-radius: 16px;
+  overflow: hidden;
+  margin: -16px -16px 0;
+  padding: 24px;
+  min-height: calc(100vh - 32px);
+  color: #e8edf5;
+  font-family: Vazirmatn, Tahoma, sans-serif;
+}
+.admin-root h2 { font-size: 18px; margin: 0 0 16px; color: #fff; }
+.admin-tabs {
+  display: flex; gap: 6px; border-bottom: 1px solid #26324c; margin-bottom: 20px; padding-bottom: 0;
+}
+.admin-tabs button {
+  background: transparent; border: none; color: #8fa0b8; padding: 10px 18px;
+  font-size: 14px; cursor: pointer; font-family: inherit; font-weight: 600;
+  border-bottom: 2px solid transparent; transition: all .15s;
+}
+.admin-tabs button.active { color: #4f8cff; border-bottom-color: #4f8cff; }
+.admin-tabs button:hover { color: #c9d6ea; }
+
+/* Cards & Stats */
+.stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:24px; }
+.stat { background:#171f2e; border:1px solid #26324c; border-radius:12px; padding:16px; }
+.stat .num { font-size:28px; font-weight:700; color:#4f8cff; line-height:1.2; }
+.stat .lbl { font-size:12px; color:#8fa0b8; margin-top:4px; }
+
+/* Tables */
+.admin-table { width:100%; border-collapse:collapse; font-size:14px; margin-top:8px; }
+.admin-table th { text-align:right; padding:10px 12px; color:#8fa0b8; font-size:12px; font-weight:600; border-bottom:1px solid #26324c; }
+.admin-table td { padding:12px; border-bottom:1px solid #1c2537; }
+.admin-table tr:hover td { background:#171f2e; }
+
+/* Buttons */
+.abtn { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:8px;
+        border:none; cursor:pointer; font-family:inherit; font-size:13px; font-weight:600;
+        text-decoration:none; transition:filter .15s; }
+.abtn:hover { filter:brightness(1.2); }
+.abtn-primary { background:linear-gradient(90deg,#4f8cff,#7b5cff); color:#fff; }
+.abtn-success { background:#16a34a; color:#fff; }
+.abtn-secondary { background:#22304d; color:#a9c0e8; }
+.abtn-danger { background:#dc2626; color:#fff; }
+.abtn-sm { padding:5px 10px; font-size:12px; }
+
+/* Progress bar */
+.job-progress { background:#171f2e; border:1px solid #26324c; border-radius:12px; padding:16px; margin-bottom:16px; }
+.job-bar { height:6px; background:#1c2537; border-radius:3px; overflow:hidden; margin-top:8px; }
+.job-bar-fill { height:100%; background:linear-gradient(90deg,#4f8cff,#7b5cff); border-radius:3px; transition:width .3s; }
+
+/* Forms */
+.admin-form { background:#171f2e; border:1px solid #26324c; border-radius:12px; padding:20px; }
+.admin-form label { display:block; font-size:13px; margin:12px 0 6px; color:#c9d6ea; font-weight:600; }
+.admin-form input, .admin-form select, .admin-form textarea {
+  width:100%; padding:10px 12px; border:1px solid #26324c; border-radius:8px;
+  background:#0f1420; color:#e8edf5; font-size:14px; font-family:inherit;
+}
+.admin-form input:focus, .admin-form select:focus, .admin-form textarea:focus {
+  outline:none; border-color:#4f8cff;
+}
+.admin-form textarea { min-height:70px; resize:vertical; }
+.form-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
+.checkbox-row { display:flex; align-items:center; gap:8px; margin:12px 0; }
+.checkbox-row input[type=checkbox] { width:18px; height:18px; accent-color:#4f8cff; }
+.checkbox-row span { font-size:14px; color:#c9d6ea; }
+
+/* Status badges */
+.status-badge { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+.status-online { background:#052e16; color:#22c55e; }
+.status-offline { background:#450a0a; color:#ef4444; }
+.status-idle { background:#1c2537; color:#8fa0b8; }
+
+/* Channel cards */
+.channel-card { background:#171f2e; border:1px solid #26324c; border-radius:12px; padding:16px; margin-bottom:12px; }
+.channel-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+.channel-name { font-size:16px; font-weight:700; color:#fff; }
+.channel-stats { display:flex; gap:16px; font-size:13px; color:#8fa0b8; }
+.channel-actions { display:flex; gap:6px; flex-wrap:wrap; }
+
+/* Flash messages inside admin */
+.admin-flash { padding:12px 16px; border-radius:10px; margin-bottom:16px; font-size:14px; }
+.admin-flash.ok { background:#052e16; border:1px solid #166534; color:#86efac; }
+.admin-flash.err { background:#450a0a; border:1px solid #991b1b; color:#fca5a5; }
+.admin-flash.info { background:#172554; border:1px solid #1e40af; color:#93c5fd; }
+
+/* Loading spinner */
+.spinner { display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,.3);
+           border-top-color:#fff; border-radius:50%; animation:spin .6s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* Session status */
+.session-status { display:flex; align-items:center; gap:10px; padding:12px 16px; background:#171f2e;
+                  border:1px solid #26324c; border-radius:10px; margin-bottom:16px; font-size:14px; }
+.session-dot { width:10px; height:10px; border-radius:50%; }
+.session-dot.on { background:#22c55e; box-shadow:0 0 8px rgba(34,197,94,.5); }
+.session-dot.off { background:#ef4444; box-shadow:0 0 8px rgba(239,68,68,.5); }
+</style>
+
+<div class="admin-root">
+
+<!-- ═══════ Tabs ═══════ -->
+<div class="admin-tabs">
+  <button class="active" onclick="switchTab('dashboard', this)">📊 داشبورد</button>
+  <button onclick="switchTab('channels', this)">📢 کانال‌ها</button>
+  <button onclick="switchTab('ai', this)">🤖 هوش مصنوعی</button>
+  <button onclick="switchTab('settings', this)">⚙️ تنظیمات</button>
+</div>
+
+
+  
+
+
+
+
+<!-- ═══════ Dashboard Tab ═══════ -->
+<div id="tab-dashboard">
+
+  <!-- Live Job Status -->
+  <div class="job-progress" id="job-panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h2 style="margin:0;font-size:15px;">📋 وضعیت کار جاری</h2>
+      <button class="abtn abtn-secondary abtn-sm" onclick="checkJob()">بروزرسانی</button>
+    </div>
+    <div id="job-content" style="margin-top:10px;color:#8fa0b8;font-size:13px;">
+      <span class="spinner"></span> در حال بررسی...
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stat-grid">
+    <div class="stat">
+      <div class="num" id="stat-products">0</div>
+      <div class="lbl">📦 کل پیام‌های ذخیره‌شده</div>
+    </div>
+    <div class="stat">
+      <div class="num">1</div>
+      <div class="lbl">📢 کانال‌های فعال</div>
+    </div>
+    <div class="stat">
+      <div class="num" style="color:#22c55e;">فعال</div>
+      <div class="lbl">🔄 دریافت خودکار</div>
+    </div>
+    <div class="stat">
+      <div class="num">60s</div>
+      <div class="lbl">⏱ فاصله بررسی</div>
+    </div>
+  </div>
+
+  <!-- Quick Actions -->
+  <h2>⚡ عملیات سریع</h2>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px;">
+    
+      <form method="post" action="/admin/fetch" style="margin:0;">
+        <input type="hidden" name="channel" value="telegram">
+        <button class="abtn abtn-primary" type="submit">🔄 دریافت telegram</button>
+      </form>
+      <form method="post" action="/admin/group-products" style="margin:0;">
+        <input type="hidden" name="channel" value="telegram">
+        <button class="abtn abtn-success" type="submit">🧩 گروه‌بندی telegram</button>
+      </form>
+    
+  </div>
+
+  <!-- Telegram session status -->
+  <div class="session-status">
+    <div class="session-dot off"></div>
+    <span>❌ سشن تلگرام تنظیم نشده</span>
+    
+      <span style="color:#8fa0b8;font-size:12px;margin-inline-start:8px;">→ از تب تنظیمات وارد شوید</span>
+    
+  </div>
+
+  <!-- Recent logs preview -->
+  <div style="background:#171f2e;border:1px solid #26324c;border-radius:12px;padding:16px;">
+    <h2 style="font-size:14px;margin:0 0 10px;">📝 آخرین فعالیت‌ها</h2>
+    <div id="recent-activity" style="font-size:12px;color:#8fa0b8;font-family:monospace;">
+      <span class="spinner"></span> در حال بارگذاری...
+    </div>
+  </div>
+</div>
+
+<!-- ═══════ Channels Tab ═══════ -->
+<div id="tab-channels" style="display:none;">
+
+  
+  <div class="channel-card">
+    <div class="channel-header">
+      <div>
+        <div class="channel-name">@telegram</div>
+        <div class="channel-stats">
+          <span>💬 0 پیام</span>
+          <span>📦 0 آیتم</span>
+        </div>
+      </div>
+      <span class="status-badge status-online">● فعال</span>
+    </div>
+    <div class="channel-actions">
+      <form method="post" action="/admin/fetch" style="margin:0;">
+        <input type="hidden" name="channel" value="telegram">
+        <button class="abtn abtn-primary abtn-sm" type="submit">🔄 دریافت جدید</button>
+      </form>
+      <form method="post" action="/admin/fetch" style="margin:0;">
+        <input type="hidden" name="channel" value="telegram">
+        <input type="hidden" name="full" value="1">
+        <button class="abtn abtn-secondary abtn-sm" type="submit">📜 تاریخچه کامل</button>
+      </form>
+      <form method="post" action="/admin/group-products" style="margin:0;">
+        <input type="hidden" name="channel" value="telegram">
+        <button class="abtn abtn-success abtn-sm" type="submit">🧩 گروه‌بندی</button>
+      </form>
+      <form method="post" action="/admin/republish" style="margin:0;">
+        <input type="hidden" name="channel" value="telegram">
+        <input type="hidden" name="limit" value="500">
+        <button class="abtn abtn-secondary abtn-sm" type="submit">📤 انتشار مجدد</button>
+      </form>
+      <form method="post" action="/admin/harvest" style="margin:0;">
+        <input type="hidden" name="channel" value="telegram">
+        <input type="hidden" name="target" value="100">
+        <button class="abtn abtn-primary abtn-sm" type="submit">🌾 برداشت تا ۱۰۰</button>
+      </form>
+      <form method="post" action="/admin/repair-media" style="margin:0;">
+        <input type="hidden" name="channel" value="telegram">
+        <button class="abtn abtn-secondary abtn-sm" type="submit">🛠 بازیابی رسانه</button>
+      </form>
+    </div>
+  </div>
+  
+
+  <a href="https://stlkala.com/gallery.php" target="_blank" class="abtn abtn-success" style="margin-top:12px;">🖼 مشاهده گالری ↗</a>
+</div>
+
+<!-- ═══════ Settings Tab ═══════ -->
+<div id="tab-settings" style="display:none;">
+
+  <div class="admin-form" style="margin-bottom:16px;">
+    <h2 style="font-size:15px;">⚙️ تنظیمات دریافت</h2>
+    <form method="post" action="/admin/save">
+      <div class="form-row">
+        <div>
+          <label>فاصله دریافت خودکار (ثانیه)</label>
+          <input type="number" name="refresh_interval" min="15" value="60">
+        </div>
+        <div>
+          <label>سقف تاریخچه</label>
+          <input type="number" name="history_limit" min="0" value="100">
+        </div>
+        <div>
+          <label>سقف ذخیره</label>
+          <input type="number" name="max_stored" min="10" value="2000">
+        </div>
+        <div>
+          <label>نمایش در صفحه عمومی</label>
+          <input type="number" name="display_limit" min="1" value="50">
+        </div>
+      </div>
+      <label>کانال‌ها (هر خط یک نام)</label>
+      <textarea name="channels">telegram</textarea>
+      <div class="checkbox-row">
+        <input type="checkbox" id="live" name="live_listen" checked>
+        <span for="live">دریافت خودکار فعال</span>
+      </div>
+      <input type="hidden" name="engine" value="telethon">
+      <input type="hidden" name="web_max_pages" value="5">
+      <button class="abtn abtn-primary" type="submit" style="margin-top:12px;">💾 ذخیره تنظیمات</button>
+    </form>
+  </div>
+
+  
+  <div class="admin-form" style="margin-bottom:16px;">
+    <h2 style="font-size:15px;">🔐 ورود تلگرام</h2>
+    <form method="post" action="/admin/telegram/send-code">
+      <div class="form-row">
+        <div>
+          <label>api_id</label>
+          <input type="text" name="api_id" value="" placeholder="123456">
+        </div>
+        <div>
+          <label>api_hash</label>
+          <input type="text" name="api_hash" value="" placeholder="a1b2c3...">
+        </div>
+        <div>
+          <label>شماره تلفن</label>
+          <input type="text" name="phone" placeholder="+98912...">
+        </div>
+      </div>
+      <button class="abtn abtn-secondary" type="submit">📨 ارسال کد</button>
+    </form>
+    <form method="post" action="/admin/telegram/signin" style="margin-top:14px;">
+      <div class="form-row">
+        <div>
+          <label>کد ۵ رقمی</label>
+          <input type="text" name="code" placeholder="12345">
+        </div>
+        <div>
+          <label>رمز 2FA (اختیاری)</label>
+          <input type="password" name="password">
+        </div>
+      </div>
+      <button class="abtn abtn-primary" type="submit">✅ تکمیل ورود</button>
+    </form>
+  </div>
+  
+
+</div>
+
+<!-- ═══════ AI Tab ═══════ -->
+<div id="tab-ai" style="display:none;">
+
+  <div class="admin-form">
+    <h2 style="font-size:15px;">🤖 تنظیمات هوش مصنوعی</h2>
+    <div style="color:#8fa0b8;font-size:13px;margin-bottom:12px;">
+      عنوان، توضیح، دسته‌بندی و تگ فارسی محصولات تولید می‌شود.
+      اگر خالی بگذارید، از متغیرهای محیطی Railway استفاده می‌شود.
+    </div>
+    <form method="post" action="/admin/ai-save">
+      <div class="form-row">
+        <div>
+          <label>آدرس پایه API</label>
+          <input type="text" name="ai_base_url" value="" placeholder="https://api.gapgpt.app/v1" dir="ltr">
+        </div>
+        <div>
+          <label>نام مدل</label>
+          <input type="text" name="ai_model" value="" placeholder="gpt-6-luna" dir="ltr">
+        </div>
+      </div>
+      <label>کلید API</label>
+      <input type="password" name="ai_api_key" value="" placeholder="sk-... (خالی = بدون تغییر)" dir="ltr">
+      <div class="checkbox-row">
+        <input type="checkbox" id="ai_vision" name="ai_vision" checked>
+        <span for="ai_vision">تحلیل بینایی عکس (عنوان/توضیح از روی خود تصویر — کندتر ولی دقیق‌تر)</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+        <button class="abtn abtn-primary" type="submit">💾 ذخیره</button>
+        <button class="abtn abtn-secondary" type="button" onclick="testAI()">🔌 تست اتصال</button>
+      </div>
+    </form>
+    <div id="ai-test-result" style="margin-top:12px;"></div>
+  </div>
+
+  <div style="background:#171f2e;border:1px solid #26324c;border-radius:12px;padding:16px;margin-top:16px;">
+    <h2 style="font-size:14px;margin:0 0 8px;">ℹ️ راهنما</h2>
+    <ul style="color:#8fa0b8;font-size:13px;line-height:2;padding-inline-start:20px;margin:0;">
+      <li><b>آدرس پایه:</b> سازگار با OpenAI — بدون <code>/chat/completions</code></li>
+      <li><b>تحلیل بینایی:</b> مدل باید قابلیت image_upload داشته باشد</li>
+      <li><b>خاموش کردن vision:</b> برای برداشت سریع تاریخچه، غیرفعال کنید</li>
+      <li>تغییرات بلافاصله روی دریافت‌ها و گروه‌بندی‌های بعدی اعمال می‌شود</li>
+    </ul>
+  </div>
+</div>
+
+</div><!-- .admin-root -->
+
+<script>
+// ═══════ Tab Switching ═══════
+function switchTab(name, btn) {
+  document.querySelectorAll('.admin-tabs button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  ['dashboard','channels','ai','settings'].forEach(t => {
+    const el = document.getElementById('tab-' + t);
+    if (el) el.style.display = t === name ? '' : 'none';
+  });
+}
+
+// ═══════ Job Status (live) ═══════
+let jobTimer = null;
+
+async function checkJob() {
+  const el = document.getElementById('job-content');
+  try {
+    const r = await fetch('/admin/job-status', {cache:'no-store'});
+    const d = await r.json();
+    if (d.running) {
+      const pct = Math.min((d.elapsed / 600) * 100, 95); // estimate 10 min
+      el.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="color:#4f8cff;">⏳ ${d.channel}</span>
+          <span style="color:#8fa0b8;">${d.elapsed}s</span>
+        </div>
+        <div class="job-bar"><div class="job-bar-fill" style="width:${pct}%"></div></div>`;
+      if (!jobTimer) jobTimer = setTimeout(checkJob, 5000);
+    } else if (d.result) {
+      const res = d.result;
+      let msg = '';
+      if (res.ok) {
+        if (res.products !== undefined) msg = `✅ برداشت: ${res.products}/${res.target} محصول (${res.rounds} دور)`;
+        else if (res.grouped !== undefined) msg = `✅ گروه‌بندی: ${res.grouped} محصول`;
+        else if (res.uploaded !== undefined) msg = `✅ مهاجرت: ${res.uploaded} فایل`;
+        else if (res.recovered !== undefined) msg = `✅ بازیابی: ${res.recovered} رسانه`;
+        else msg = `✅ دریافت: ${res.new||0} جدید، ${res.published||0} منتشرشده`;
+      } else {
+        msg = `❌ ${res.error || 'خطا'}`;
+      }
+      el.innerHTML = `<div class="admin-flash ${res.ok?'ok':'err'}" style="margin:0;">${msg}</div>`;
+      if (jobTimer) { clearTimeout(jobTimer); jobTimer = null; }
+    } else {
+      el.innerHTML = '<span style="color:#8fa0b8;">فعالیتی در جریان نیست</span>';
+    }
+  } catch(e) {
+    el.innerHTML = `<span style="color:#ef4444;">خطا: ${e}</span>`;
+  }
+}
+
+// Auto-check on page load
+checkJob();
+
+// ═══════ AI Test ═══════
+async function testAI() {
+  const el = document.getElementById('ai-test-result');
+  el.innerHTML = '<span class="spinner"></span> در حال تست...';
+  try {
+    const r = await fetch('/admin/ai-test', {cache:'no-store'});
+    const d = await r.json();
+    if (d.ok) {
+      el.innerHTML = `<div class="admin-flash ok">✅ اتصال موفق — مدل: <b>${d.model}</b><br><small style="color:#8fa0b8;">پاسخ: ${d.response}</small></div>`;
+    } else {
+      el.innerHTML = `<div class="admin-flash err">❌ ${d.error}</div>`;
+    }
+  } catch(e) {
+    el.innerHTML = `<div class="admin-flash err">❌ خطا: ${e}</div>`;
+  }
+}
+
+// ═══════ Auto-refresh job status while running ═══════
+setInterval(() => {
+  const el = document.getElementById('job-content');
+  if (el && el.innerHTML.includes('⏳')) checkJob();
+}, 10000);
+</script>
+
+
+</div>
+</body>
+</html>

@@ -36,6 +36,23 @@ app.secret_key = SECRET_KEY
 store = Store(DATA_DIR)
 
 
+def ai_cfg() -> dict:
+    """تنظیمات هوش مصنوعی: اول از store (پنل)، بعد از متغیر محیطی.
+    خروجی: {base_url, api_key, model, vision}"""
+    s = store.get_settings()
+    return {
+        "base_url": (s.get("ai_base_url") or AI_API_BASE_URL or "").strip().rstrip("/"),
+        "api_key": (s.get("ai_api_key") or AI_API_KEY or "").strip(),
+        "model": (s.get("ai_model") or AI_MODEL or "").strip(),
+        "vision": bool(s.get("ai_vision", True)) and os.environ.get("VISION_ENABLED", "1") == "1",
+    }
+
+
+def ai_ready() -> bool:
+    c = ai_cfg()
+    return bool(c["base_url"] and c["api_key"] and c["model"])
+
+
 # ---------- مسیر اتصال به تلگرام (رله اختیاری) ----------
 _orig_getaddrinfo = socket.getaddrinfo
 
@@ -84,7 +101,8 @@ def enrich_message(msg: dict, channel: str) -> dict:
     msg.setdefault("description", text_body)
     msg.setdefault("category", guess_category(filename, text_body, msg.get("has_media")))
     msg.setdefault("tags", [])
-    if not (AI_API_BASE_URL and AI_API_KEY and AI_MODEL):
+    cfg = ai_cfg()
+    if not (cfg["base_url"] and cfg["api_key"] and cfg["model"]):
         msg["ai_status"] = "fallback"
         return msg
     try:
@@ -99,10 +117,10 @@ def enrich_message(msg: dict, channel: str) -> dict:
                          ensure_ascii=False)
         )
         response = requests.post(
-            AI_API_BASE_URL + "/chat/completions",
-            headers={"Authorization": "Bearer " + AI_API_KEY,
+            cfg["base_url"] + "/chat/completions",
+            headers={"Authorization": "Bearer " + cfg["api_key"],
                      "Content-Type": "application/json"},
-            json={"model": AI_MODEL, "temperature": 0.2,
+            json={"model": cfg["model"], "temperature": 0.2,
                   "messages": [{"role": "system", "content": "Return only valid JSON."},
                                {"role": "user", "content": prompt}]},
             timeout=35)
@@ -149,7 +167,7 @@ def _auto_group_new(channel: str, new_msgs: list) -> int:
     """بعد از دریافت پیام‌های جدید: اگر پست فایل‌دار جدید رسیده و عکس‌های
     پیش از آن هم تازه‌اند، همان لحظه گروه‌بندی محصول انجام می‌شود.
     خروجی: تعداد محصول ساخته‌شده (۰ = کاری انجام نشد یا AI آماده نبود)."""
-    if not new_msgs or not (AI_API_BASE_URL and AI_API_KEY and AI_MODEL):
+    if not new_msgs or not ai_ready():
         return 0
     if not any(products.is_file_post(m) for m in new_msgs):
         return 0  # پست فایل‌دار جدیدی نیست؛ الگوی محصول تکمیل نشده
@@ -739,6 +757,48 @@ def admin_media_selftest():
 HARVEST_TARGET = int(os.environ.get("HARVEST_TARGET", 100))
 
 
+@app.route("/admin/ai-save", methods=["POST"])
+def admin_ai_save():
+    """ذخیره تنظیمات هوش مصنوعی از پنل (در store؛ بدون نیاز به متغیر Railway)."""
+    r = require_admin()
+    if r:
+        return r
+    s = store.get_settings()
+    s["ai_base_url"] = (request.form.get("ai_base_url") or "").strip().rstrip("/")
+    key = (request.form.get("ai_api_key") or "").strip()
+    if key:
+        s["ai_api_key"] = key  # خالی = تغییر نکن
+    s["ai_model"] = (request.form.get("ai_model") or "").strip()
+    s["ai_vision"] = request.form.get("ai_vision") == "on"
+    store.save_settings(s)
+    flash("تنظیمات هوش مصنوعی ذخیره شد ✓")
+    return redirect(url_for("admin"))
+
+
+@app.route("/admin/ai-test")
+def admin_ai_test():
+    """تست سریع اتصال به سرویس AI با تنظیمات فعلی (store یا env)."""
+    r = require_admin()
+    if r:
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    c = ai_cfg()
+    if not (c["base_url"] and c["api_key"] and c["model"]):
+        return jsonify({"ok": False, "error": "تنظیمات AI ناقص است"})
+    try:
+        resp = requests.post(
+            c["base_url"] + "/chat/completions",
+            headers={"Authorization": "Bearer " + c["api_key"],
+                     "Content-Type": "application/json"},
+            json={"model": c["model"], "temperature": 0,
+                  "messages": [{"role": "user", "content": "Return JSON: {\"ok\": true}"}]},
+            timeout=30)
+        resp.raise_for_status()
+        content = resp.json()["choices"][0]["message"]["content"]
+        return jsonify({"ok": True, "model": c["model"], "response": str(content)[:100]})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)[:200]})
+
+
 @app.route("/admin/harvest", methods=["POST"])
 def admin_harvest():
     """برداشت افزایشی تاریخچه: هر دور مقداری پیام قدیمی‌تر می‌گیرد، همان
@@ -978,12 +1038,13 @@ def _group_products_job(channel: str) -> tuple:
     pub_cfg = publisher.publish_config()
     if not publisher.publish_enabled(pub_cfg):
         raise RuntimeError("PUBLISH_ENDPOINT_URL/PUBLISH_SECRET ست نشده است.")
-    ai_ready = bool(AI_API_BASE_URL and AI_API_KEY and AI_MODEL)
+    _ai = ai_cfg()
+    ai_ready = bool(_ai["base_url"] and _ai["api_key"] and _ai["model"])
     msgs = store.get_messages(channel, 10**9)
     media_msgs = [m for m in msgs if m.get("has_media") and m.get("media_url")]
     zgroups = products.zip_boundary_groups(media_msgs)
     print(f"[group] @{channel}: {len(zgroups)} zip-boundary group(s), "
-          f"ai={'ready' if ai_ready else 'OFF'}", flush=True)
+          f"ai={'ready' if ai_ready else 'OFF'} (model={_ai['model']})", flush=True)
     grouped_done = no_media = failed = 0
     seen_folders = {}
     for zg in zgroups:
@@ -1017,7 +1078,7 @@ def _group_products_job(channel: str) -> tuple:
                         + json.dumps({"caption": (cap.get("text") or "")[:500],
                                       "filename": zip_name or None},
                                      ensure_ascii=False),
-                        AI_API_BASE_URL, AI_API_KEY, AI_MODEL,
+                        _ai["base_url"], _ai["api_key"], _ai["model"],
                         ["gpt-5.4-mini", "claude-haiku-5-5"])
                     folder = products._slug(str(meta.get("folder_name") or ""),
                                             fallback_slug)
@@ -1034,8 +1095,7 @@ def _group_products_job(channel: str) -> tuple:
             moved = _move_media_to_product(channel, folder, members, pub_cfg)
             # تحلیل بینایی: عکس کاور محصول → عنوان/توضیح/تگ فارسی از خود تصویر
             # VISION_ENABLED=0 → خاموش (حالت سریع برای backfill)
-            vision_on = os.environ.get("VISION_ENABLED", "1") == "1"
-            if ai_ready and vision_on:
+            if ai_ready and _ai["vision"]:
                 cover = next((m for m in members
                               if m.get("has_media") == "photo" and m.get("media_url")),
                              None)
@@ -1051,7 +1111,7 @@ def _group_products_job(channel: str) -> tuple:
                         img_r.raise_for_status()
                         vis = products.ai_vision_describe(
                             img_r.content, "image/jpeg",
-                            AI_API_BASE_URL, AI_API_KEY, AI_MODEL)
+                            _ai["base_url"], _ai["api_key"], _ai["model"])
                         # فقط اعضای بدون متن، متادیتای بینایی می‌گیرند
                         for m in members:
                             if m is not cap and not (m.get("text") or "").strip():
